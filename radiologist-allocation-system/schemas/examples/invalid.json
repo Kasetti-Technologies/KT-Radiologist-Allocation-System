@@ -1,0 +1,13 @@
+{
+  "ticket_id": 12345,
+  "source_system": "EPIC",
+  "category": "INVALID",
+  "priority": "high",
+  "created_at": "not-a-date",
+  "skills_required": [],
+  "sla_minutes": -5,
+  "provenance": {
+    "producer_id": 789,
+    "producer_version": null
+  }
+}
