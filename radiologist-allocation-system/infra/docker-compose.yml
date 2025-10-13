@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ras_postgres
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: radiology
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev"]
+      interval: 5s
+      retries: 5
+    networks:
+      - ras-net
+
+  redis:
+    image: redis:7
+    container_name: ras_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ras-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: ras_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - ras-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: ras_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "ras_zookeeper:2181"
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - ras-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ras_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - ras-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ras_grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - ras-net
+
+volumes:
+  pgdata:
+
+networks:
+  ras-net:
+    driver: bridge
