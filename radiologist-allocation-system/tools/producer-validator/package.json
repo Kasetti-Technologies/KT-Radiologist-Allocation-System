@@ -1,0 +1,19 @@
+{
+  "name": "producer-validator",
+  "version": "1.0.0",
+  "description": "Schema validation and Kafka producer for Radiology Allocation System",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "validate": "node validate.js",
+    "produce": "node producer.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "chalk": "^5.6.2",
+    "fs-extra": "^11.3.2",
+    "kafkajs": "^2.2.4"
+  }
+}
