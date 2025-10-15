@@ -47,8 +47,38 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: "ras_zookeeper:2181"
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,DOCKER://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,DOCKER://ras_kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - ras-net
+
+  base-service:
+    build:
+      context: ../services/base-service
+    container_name: ras_base_service
+    env_file:
+      - ../services/base-service/.env
+    depends_on:
+      - kafka
+      - postgres
+      - redis
+    ports:
+      - "8080:8080"
+    networks:
+      - ras-net
+
+  validator-service:
+    build:
+      context: ../services/producer-validator
+      dockerfile: Dockerfile
+    container_name: ras_validator_service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - kafka
     networks:
       - ras-net
 

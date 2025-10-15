@@ -1,0 +1,14 @@
+{
+  "name": "producer-validator",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "kafkajs": "^2.2.4"
+  }
+}
