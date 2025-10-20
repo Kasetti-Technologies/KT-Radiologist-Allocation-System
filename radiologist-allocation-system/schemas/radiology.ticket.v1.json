@@ -64,7 +64,7 @@
       "description": "Metadata about message origin"
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "ticket_id": "MRI-2025-001",

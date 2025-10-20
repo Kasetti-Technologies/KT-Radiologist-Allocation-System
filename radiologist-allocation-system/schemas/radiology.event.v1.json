@@ -1,0 +1,21 @@
+    {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ras.local/schemas/radiology.event.v1.json",
+  "title": "Radiology Event v1",
+  "type": "object",
+  "required": ["event_id", "event_type", "timestamp", "source_service", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "description": "Unique event identifier" },
+    "event_type": {
+      "type": "string",
+      "enum": ["TICKET_CREATED", "TICKET_VALIDATED", "ASSIGNED_TO_RADIOLOGIST"],
+      "description": "The type of event being published"
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "source_service": { "type": "string" },
+    "payload": {
+      "$ref": "radiology.ticket.v1.json",
+      "description": "The radiology ticket payload following the v1 schema"
+    }
+  }
+}

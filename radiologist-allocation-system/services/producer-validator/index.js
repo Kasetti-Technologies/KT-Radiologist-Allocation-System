@@ -1,7 +1,8 @@
+// services/producer-validator/index.js
 import express from "express";
 import dotenv from "dotenv";
+import { startConsumer } from "./kafka/consumer.js";
 import healthRouter from "./routes/health.js";
-import { connectConsumer } from "./kafka/consumer.js";
 
 dotenv.config();
 
@@ -12,15 +13,10 @@ app.use("/api", healthRouter);
 const PORT = process.env.PORT || 8081;
 
 const start = async () => {
-  try {
-    await connectConsumer();
-    app.listen(PORT, () => {
-      console.log(`🚀 Validator Service running on http://localhost:${PORT}`);
-    });
-  } catch (err) {
-    console.error("❌ Failed to start Validator Service:", err);
-    process.exit(1);
-  }
+  await startConsumer();
+  app.listen(PORT, () => {
+    console.log(`🚀 Validator Service running on http://localhost:${PORT}`);
+  });
 };
 
-start();
+startConsumer();

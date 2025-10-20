@@ -43,15 +43,25 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      - "9092:9092"    # For host machine (e.g., Postman)
+      - "29092:29092"  # For internal Docker communication
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: "ras_zookeeper:2181"
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,DOCKER://0.0.0.0:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,DOCKER://ras_kafka:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,DOCKER:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+
+      # ✅ Two listeners: internal (for containers) + external (for host)
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://ras_kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
     networks:
       - ras-net
 
@@ -62,9 +72,15 @@ services:
     env_file:
       - ../services/base-service/.env
     depends_on:
-      - kafka
-      - postgres
-      - redis
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - KAFKA_BROKER=ras_kafka:29092
+      - KAFKA_TOPIC=radiology-events
     ports:
       - "8080:8080"
     networks:
@@ -72,15 +88,22 @@ services:
 
   validator-service:
     build:
-      context: ../services/producer-validator
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/producer-validator/Dockerfile
     container_name: ras_validator_service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=ras_kafka:29092
+      - KAFKA_TOPIC=radiology-events
+      - KAFKA_GROUP_ID=validator-group
     ports:
       - "8081:8081"
-    depends_on:
-      - kafka
     networks:
       - ras-net
+
+
 
   prometheus:
     image: prom/prometheus:latest
