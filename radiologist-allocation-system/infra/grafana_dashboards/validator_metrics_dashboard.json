@@ -1,0 +1,56 @@
+{
+  "id": null,
+  "title": "Radiology Validator – Kafka Metrics Dashboard",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Messages Consumed",
+      "targets": [{ "expr": "validator_messages_consumed_total" }],
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "stat",
+      "title": "Validation Passed",
+      "targets": [{ "expr": "validator_validation_passed_total" }],
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "type": "stat",
+      "title": "Validation Failed",
+      "targets": [{ "expr": "validator_validation_failed_total" }],
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds", "thresholds": [{ "color": "green" }, { "value": 1, "color": "red" }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Dead-Letter Produced",
+      "targets": [{ "expr": "validator_dead_letter_produced_total" }],
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds", "thresholds": [{ "color": "green" }, { "value": 1, "color": "orange" }, { "value": 5, "color": "red" }] } } }
+    },
+    {
+      "type": "graph",
+      "title": "Validation Events Over Time",
+      "targets": [
+        { "expr": "increase(validator_validation_passed_total[1m])", "legendFormat": "Passed" },
+        { "expr": "increase(validator_validation_failed_total[1m])", "legendFormat": "Failed" },
+        { "expr": "increase(validator_dead_letter_produced_total[1m])", "legendFormat": "Dead-Letter" }
+      ],
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "Service CPU & Memory",
+      "targets": [
+        { "expr": "process_cpu_user_seconds_total", "legendFormat": "CPU (user)" },
+        { "expr": "process_resident_memory_bytes / 1024 / 1024", "legendFormat": "Memory (MB)" }
+      ],
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 }
+    }
+  ]
+}

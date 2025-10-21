@@ -110,6 +110,7 @@ services:
     container_name: ras_prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml
     ports:
       - "9090:9090"
     networks:
@@ -125,8 +126,37 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - ./grafana_dashboards:/var/lib/grafana/dashboards
+      - ./grafana_provisioning:/etc/grafana/provisioning
     networks:
       - ras-net
+
+  allocator-service:
+    build:
+      context: ..
+      dockerfile: services/allocator-service/Dockerfile
+    container_name: ras_allocator_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=ras_kafka:29092
+      - KAFKA_TOPIC=radiology.validated
+      - KAFKA_GROUP_ID=allocator-group
+      - DB_USER=dev
+      - DB_PASSWORD=dev
+      - DB_NAME=radiology
+      - DB_HOST=ras_postgres
+      - DB_PORT=5432
+    ports:
+      - "8082:8082"
+    networks:
+      - ras-net
+
 
 volumes:
   pgdata:

@@ -1,0 +1,32 @@
+groups:
+  - name: kafka_validator_alerts
+    rules:
+      # 🔴 Validation failure rate alert
+      - alert: HighValidationFailureRate
+        expr: increase(validator_validation_failed_total[1m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High validation failure rate detected"
+          description: "More than 5 messages failed validation in the last minute on {{ $labels.instance }}"
+
+      # ⚠️ Dead-letter activity alert
+      - alert: DeadLetterProduced
+        expr: increase(validator_dead_letter_produced_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dead-letter topic activity detected"
+          description: "Validator produced at least 1 message to dead-letter topic within last 1 minute"
+
+      # 💤 No messages consumed (pipeline stalled)
+      - alert: NoMessagesConsumed
+        expr: rate(validator_messages_consumed_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Kafka messages consumed in last 5 minutes"
+          description: "Validator may be stalled or disconnected from Kafka."

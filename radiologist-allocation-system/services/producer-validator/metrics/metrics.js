@@ -1,7 +1,6 @@
-// ✅ services/producer-validator/metrics/metrics.js
+// services/producer-validator/metrics/metrics.js
 import client from "prom-client";
 
-// Create registry and collect default system metrics (CPU, memory, etc.)
 const register = new client.Registry();
 client.collectDefaultMetrics({ register });
 
@@ -10,29 +9,25 @@ export const messagesConsumed = new client.Counter({
   name: "validator_messages_consumed_total",
   help: "Total number of messages consumed from Kafka",
 });
-
 export const validationPassed = new client.Counter({
   name: "validator_validation_passed_total",
   help: "Total number of messages that passed schema validation",
 });
-
 export const validationFailed = new client.Counter({
   name: "validator_validation_failed_total",
   help: "Total number of messages that failed schema validation",
 });
-
 export const deadLetterProduced = new client.Counter({
   name: "validator_dead_letter_produced_total",
   help: "Total number of messages sent to the dead-letter topic",
 });
 
-// Register all custom metrics
 register.registerMetric(messagesConsumed);
 register.registerMetric(validationPassed);
 register.registerMetric(validationFailed);
 register.registerMetric(deadLetterProduced);
 
-// Expose /metrics endpoint
+// Expose Prometheus metrics endpoint
 export const metricsEndpoint = async (req, res) => {
   res.set("Content-Type", register.contentType);
   res.end(await register.metrics());
