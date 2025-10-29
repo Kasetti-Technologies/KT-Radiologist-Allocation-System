@@ -26,8 +26,12 @@ app.get("/metrics", async (req, res) => {
 app.post("/api/send-validated", async (req, res) => {
   try {
     const payload = req.body;
-    console.log("📤 Sending validated event:", payload);
 
+    if (!payload.ticket_id) {
+      return res.status(400).json({ error: "Missing ticket_id in payload" });
+    }
+
+    console.log("📤 Sending validated event:", JSON.stringify(payload, null, 2));
     await sendMessage("radiology.validated", payload);
 
     return res.json({
@@ -40,6 +44,7 @@ app.post("/api/send-validated", async (req, res) => {
     res.status(500).json({ status: "error", error: err.message });
   }
 });
+
 
 // ✅ Route: Send intentionally invalid message
 app.post("/api/test-invalid", async (req, res) => {

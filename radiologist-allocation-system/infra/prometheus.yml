@@ -26,3 +26,7 @@ scrape_configs:
   - job_name: 'validator-service'
     static_configs:
       - targets: ['ras_validator_service:8081']
+
+  - job_name: 'allocator-service'
+    static_configs:
+      - targets: ['ras_allocator_service:8082']

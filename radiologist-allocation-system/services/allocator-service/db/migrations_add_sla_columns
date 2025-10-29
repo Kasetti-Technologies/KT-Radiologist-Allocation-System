@@ -1,0 +1,15 @@
+-- services/allocator-service/db/migrations_add_sla_columns.sql
+BEGIN;
+
+-- Add SLA and status fields (idempotent)
+ALTER TABLE IF EXISTS assignments
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PENDING',
+  ADD COLUMN IF NOT EXISTS sla_minutes INT DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS escalated BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS radiologist_name TEXT;
+
+-- Useful indexes
+CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments (status);
+CREATE INDEX IF NOT EXISTS idx_assignments_ticket_id ON assignments (ticket_id);
+
+COMMIT;

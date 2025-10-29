@@ -13,13 +13,13 @@ export const connectProducer = async () => {
   console.log("✅ Allocator Kafka Producer connected");
 };
 
-export const sendAssignedMessage = async (message) => {
+export const sendAssignedMessage = async (payload) => {
   try {
     await producer.send({
-      topic: "radiology.assigned",
-      messages: [{ value: JSON.stringify(message) }],
+      topic: "radiology.allocated",
+      messages: [{ value: JSON.stringify(payload) }],
     });
-    console.log("📤 Sent assigned message:", message);
+    console.log(`📤 Sent assigned message for ticket ${payload.ticket_id}`);
   } catch (err) {
     console.error("🚨 Failed to send assigned message:", err);
   }

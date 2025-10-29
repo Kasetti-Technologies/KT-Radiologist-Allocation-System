@@ -3,6 +3,7 @@ import { Kafka } from "kafkajs";
 import { allocateRadiologist } from "../logic/allocator.js";
 import { pool } from "../db/connect.js";
 import { sendAssignedMessage } from "./producer.js";
+import { allocationsCounter, slaGauge } from "../index.js"; // ✅ NEW
 
 const kafka = new Kafka({
   clientId: "allocator-service",
@@ -22,7 +23,7 @@ export const startConsumer = async () => {
       const event = JSON.parse(message.value.toString());
       console.log("📥 Received validated event:", event);
 
-      const { ticket_id, category, priority, skills_required } = event;
+      const { ticket_id, category, priority, skills_required, sla_minutes } = event;
 
       try {
         const selectedRadiologist = await allocateRadiologist(category, skills_required);
@@ -31,14 +32,21 @@ export const startConsumer = async () => {
           return;
         }
 
-        // Insert assignment
+        // Insert assignment into DB
         const result = await pool.query(
-          `INSERT INTO assignments (ticket_id, radiologist_id, assigned_at, priority)
-           VALUES ($1, $2, NOW(), $3)
+          `INSERT INTO assignments (ticket_id, radiologist_id, radiologist_name, assigned_at, priority)
+           VALUES ($1, $2, $3, NOW(), $4)
            RETURNING *`,
-          [ticket_id, selectedRadiologist.id, priority]
+          [ticket_id, selectedRadiologist.id, selectedRadiologist.name, priority]
         );
         console.log("✅ Assignment created:", result.rows[0]);
+
+        // ✅ Update Prometheus metrics
+        allocationsCounter.inc({
+          radiologist: selectedRadiologist.name,
+          category,
+        });
+        slaGauge.set({ category }, sla_minutes || 0);
 
         // Log audit
         await pool.query(

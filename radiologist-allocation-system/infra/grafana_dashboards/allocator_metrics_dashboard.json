@@ -1,0 +1,46 @@
+{
+  "id": null,
+  "title": "Radiologist Allocator – Metrics Dashboard",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Allocations (All Radiologists)",
+      "targets": [{ "expr": "sum(allocator_assignments_total)" }],
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "bar",
+      "title": "Allocations Per Radiologist",
+      "targets": [{ "expr": "sum by (radiologist) (allocator_assignments_total)" }],
+      "gridPos": { "x": 6, "y": 0, "w": 9, "h": 8 }
+    },
+    {
+      "type": "bar",
+      "title": "Allocations by Category",
+      "targets": [{ "expr": "sum by (category) (allocator_assignments_total)" }],
+      "gridPos": { "x": 15, "y": 0, "w": 9, "h": 8 }
+    },
+    {
+      "type": "gauge",
+      "title": "Average SLA per Category (Minutes)",
+      "targets": [{ "expr": "avg by (category) (allocator_sla_minutes)" }],
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Assignment Trend (per Radiologist)",
+      "targets": [{ "expr": "increase(allocator_assignments_total[1m])", "legendFormat": "{{radiologist}}" }],
+      "gridPos": { "x": 8, "y": 8, "w": 16, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "SLA Trend Over Time",
+      "targets": [{ "expr": "allocator_sla_minutes", "legendFormat": "{{category}}" }],
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 }
+    }
+  ]
+}
