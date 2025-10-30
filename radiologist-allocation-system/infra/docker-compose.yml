@@ -157,6 +157,28 @@ services:
     networks:
       - ras-net
 
+  audit_service:
+    build: ../services/audit-service
+    container_name: ras_audit_service
+    ports:
+      - "8085:8085"
+    depends_on:
+      - kafka
+      - postgres   # ✅ service name (not container_name)
+    environment:
+      - DB_USER=dev
+      - DB_PASSWORD=dev
+      - DB_NAME=radiology
+      - DB_HOST=postgres      # ✅ use service name
+      - DB_PORT=5432
+      - KAFKA_BROKER=ras_kafka:29092
+      - KAFKA_TOPIC=radiology.allocated
+    networks:
+      - ras-net
+    restart: unless-stopped
+
+
+
 
 volumes:
   pgdata:

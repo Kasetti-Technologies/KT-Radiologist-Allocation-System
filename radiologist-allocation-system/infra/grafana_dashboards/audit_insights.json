@@ -1,0 +1,36 @@
+{
+  "title": "Audit Insights Dashboard",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Audit Events Over Time",
+      "targets": [
+        {
+          "expr": "increase(audit_events_total[5m])",
+          "legendFormat": "{{action}} ({{radiologist}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "bargauge",
+      "title": "Reassignments by Radiologist",
+      "targets": [
+        {
+          "expr": "audit_events_total{action=\"auto_reassignment\"}",
+          "legendFormat": "{{radiologist}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Total Audit Events",
+      "targets": [
+        {
+          "expr": "sum(audit_events_total)"
+        }
+      ]
+    }
+  ]
+}

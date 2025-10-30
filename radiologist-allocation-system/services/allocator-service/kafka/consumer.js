@@ -3,7 +3,7 @@ import { Kafka } from "kafkajs";
 import { allocateRadiologist } from "../logic/allocator.js";
 import { pool } from "../db/connect.js";
 import { sendAssignedMessage } from "./producer.js";
-import { allocationsCounter, slaGauge } from "../index.js"; // ✅ NEW
+import { allocationsCounter, slaGauge } from "../index.js";
 
 const kafka = new Kafka({
   clientId: "allocator-service",
@@ -27,46 +27,46 @@ export const startConsumer = async () => {
 
       try {
         const selectedRadiologist = await allocateRadiologist(category, skills_required);
-        if (!selectedRadiologist) {
+
+        let radiologistId = null;
+        let radiologistName = null;
+        let actionReason = "auto_assignment_success";
+
+        if (selectedRadiologist) {
+          radiologistId = selectedRadiologist.id;
+          radiologistName = selectedRadiologist.name;
+
+          // ✅ Insert into assignments
+          const result = await pool.query(
+            `INSERT INTO assignments (ticket_id, radiologist_id, radiologist_name, assigned_at, priority)
+             VALUES ($1, $2, $3, NOW(), $4)
+             RETURNING *`,
+            [ticket_id, radiologistId, radiologistName, priority]
+          );
+          console.log("✅ Assignment created:", result.rows[0]);
+
+          // ✅ Update Prometheus metrics
+          allocationsCounter.inc({ radiologist: radiologistName, category });
+          slaGauge.set({ category }, sla_minutes || 0);
+        } else {
           console.warn(`⚠️ No radiologist found for ${ticket_id}`);
-          return;
+          actionReason = "no_alternative";
         }
 
-        // Insert assignment into DB
-        const result = await pool.query(
-          `INSERT INTO assignments (ticket_id, radiologist_id, radiologist_name, assigned_at, priority)
-           VALUES ($1, $2, $3, NOW(), $4)
-           RETURNING *`,
-          [ticket_id, selectedRadiologist.id, selectedRadiologist.name, priority]
-        );
-        console.log("✅ Assignment created:", result.rows[0]);
-
-        // ✅ Update Prometheus metrics
-        allocationsCounter.inc({
-          radiologist: selectedRadiologist.name,
-          category,
-        });
-        slaGauge.set({ category }, sla_minutes || 0);
-
-        // Log audit
-        await pool.query(
-          `INSERT INTO allocation_audit (ticket_id, radiologist_id, action, created_at)
-           VALUES ($1, $2, 'ASSIGNED', NOW())`,
-          [ticket_id, selectedRadiologist.id]
-        );
-
-        // Send downstream message
+        // ✅ Always send an audit message (success or failure)
         await sendAssignedMessage({
           ticket_id,
-          radiologist_id: selectedRadiologist.id,
-          radiologist_name: selectedRadiologist.name,
+          radiologist_id: radiologistId,
+          radiologist_name: radiologistName,
           category,
           assigned_at: new Date().toISOString(),
           provenance: {
             service: "allocator-service",
-            reason: "auto_assignment_success",
+            reason: actionReason,
           },
         });
+
+        console.log(`📤 Sent audit message (${actionReason}) for ticket ${ticket_id}`);
       } catch (err) {
         console.error("❌ Allocation processing error:", err);
       }
