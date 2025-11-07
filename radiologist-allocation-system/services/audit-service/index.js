@@ -4,17 +4,13 @@ import dotenv from "dotenv";
 import register, { auditEventCounter, radiologistActivityGauge } from "./metrics/prometheus.js";
 import { startConsumer } from "./kafka/consumer.js";
 import analyticsRouter from "./routes/analytics.js";
-import { pool } from "./db/connect.js";
+import { runMigrations } from "./db/migrations.js";
 
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 8085;
 
-// Middleware
 app.use(express.json());
-
-// Routes
 app.use("/analytics", analyticsRouter);
 
 // Prometheus metrics endpoint
@@ -23,28 +19,15 @@ app.get("/metrics", async (req, res) => {
   res.end(await register.metrics());
 });
 
-// Run migrations (if not already)
-const initDB = async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id SERIAL PRIMARY KEY,
-      ticket_id TEXT,
-      radiologist_id INT,
-      radiologist_name TEXT,
-      category TEXT,
-      action TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      raw_event JSONB
-    );
-  `);
-  console.log("✅ Audit Service connected to Postgres");
-};
+// Health endpoint
+app.get("/health", (_, res) => res.json({ ok: true, service: "audit-service" }));
 
-// Start
+// Initialize DB and start consumer
 (async () => {
-  await initDB();
+  await runMigrations();
   await startConsumer();
-  app.listen(PORT, () =>
-    console.log(`🪶 Audit Service running on http://localhost:${PORT}`)
-  );
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🪶 Audit Service running on http://localhost:${PORT}`);
+    console.log(`📊 Metrics available at http://localhost:${PORT}/metrics`);
+  });
 })();

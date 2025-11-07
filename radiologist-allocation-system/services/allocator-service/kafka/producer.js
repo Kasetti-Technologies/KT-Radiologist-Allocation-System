@@ -6,20 +6,21 @@ const kafka = new Kafka({
   brokers: [process.env.KAFKA_BROKER],
 });
 
-const producer = kafka.producer();
+export const producer = kafka.producer();
 
 export const connectProducer = async () => {
   await producer.connect();
   console.log("✅ Allocator Kafka Producer connected");
 };
 
+// Send audit/assignment events to "radiology.allocated"
 export const sendAssignedMessage = async (payload) => {
   try {
     await producer.send({
       topic: "radiology.allocated",
       messages: [{ value: JSON.stringify(payload) }],
     });
-    console.log(`📤 Sent assigned message for ticket ${payload.ticket_id}`);
+    console.log(`📤 Sent assigned message for ticket ${payload.case_id || payload.ticket_id}`);
   } catch (err) {
     console.error("🚨 Failed to send assigned message:", err);
   }

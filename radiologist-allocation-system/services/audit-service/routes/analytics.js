@@ -11,13 +11,12 @@ router.get("/audit-summary", async (req, res) => {
         radiologist_name,
         category,
         action,
-        COUNT(*) as total
+        COUNT(*) AS total
       FROM audit_logs
       GROUP BY radiologist_name, category, action
       ORDER BY total DESC
       LIMIT 20;
     `);
-
     res.json({ ok: true, data: result.rows });
   } catch (err) {
     console.error("❌ Failed to fetch audit summary:", err);

@@ -12,61 +12,105 @@ const kafka = new Kafka({
 
 const consumer = kafka.consumer({ groupId: "allocator-group" });
 
+function safeParse(msg) {
+  try {
+    return JSON.parse(msg);
+  } catch {
+    console.warn("⚠️ Invalid JSON message received, skipping:", msg);
+    return null;
+  }
+}
+
 export const startConsumer = async () => {
   await consumer.connect();
-  console.log(`✅ Allocator Consumer connected to ${process.env.KAFKA_BROKER}`);
+  console.log(`✅ Allocator Consumer connected`);
 
   await consumer.subscribe({ topic: "radiology.validated", fromBeginning: true });
+  await consumer.subscribe({ topic: "radiologist.availability", fromBeginning: false });
+  await consumer.subscribe({ topic: "radiologist.leave", fromBeginning: false });
+  await consumer.subscribe({ topic: "radiology.completed", fromBeginning: false }); // ✅ new topic
 
   await consumer.run({
-    eachMessage: async ({ message }) => {
-      const event = JSON.parse(message.value.toString());
-      console.log("📥 Received validated event:", event);
+    eachMessage: async ({ topic, message }) => {
+      const data = safeParse(message.value.toString());
+      if (!data) return;
 
-      const { ticket_id, category, priority, skills_required, sla_minutes } = event;
+      console.log(`📥 [${topic}] Received:`, data);
 
       try {
-        const selectedRadiologist = await allocateRadiologist(category, skills_required);
-
-        let radiologistId = null;
-        let radiologistName = null;
-        let actionReason = "auto_assignment_success";
-
-        if (selectedRadiologist) {
-          radiologistId = selectedRadiologist.id;
-          radiologistName = selectedRadiologist.name;
-
-          // ✅ Insert into assignments
-          const result = await pool.query(
-            `INSERT INTO assignments (ticket_id, radiologist_id, radiologist_name, assigned_at, priority)
-             VALUES ($1, $2, $3, NOW(), $4)
-             RETURNING *`,
-            [ticket_id, radiologistId, radiologistName, priority]
-          );
-          console.log("✅ Assignment created:", result.rows[0]);
-
-          // ✅ Update Prometheus metrics
-          allocationsCounter.inc({ radiologist: radiologistName, category });
-          slaGauge.set({ category }, sla_minutes || 0);
-        } else {
-          console.warn(`⚠️ No radiologist found for ${ticket_id}`);
-          actionReason = "no_alternative";
+        // ✅ Radiologist available
+        if (topic === "radiologist.availability") {
+          console.log("✅ Availability event recorded:", data);
+          return;
         }
 
-        // ✅ Always send an audit message (success or failure)
-        await sendAssignedMessage({
-          ticket_id,
-          radiologist_id: radiologistId,
-          radiologist_name: radiologistName,
-          category,
-          assigned_at: new Date().toISOString(),
-          provenance: {
-            service: "allocator-service",
-            reason: actionReason,
-          },
-        });
+        // 🚫 Radiologist on leave
+        if (topic === "radiologist.leave") {
+          await pool.query(
+            "UPDATE radiologists SET availability = false WHERE id = $1",
+            [data.radiologist_id]
+          );
+          console.log(`🚫 Radiologist ${data.radiologist_id} on leave`);
+          return;
+        }
 
-        console.log(`📤 Sent audit message (${actionReason}) for ticket ${ticket_id}`);
+        // 🩻 New validated radiology case
+        if (topic === "radiology.validated") {
+          const { ticket_id, category, priority, skills_required, sla_minutes } = data;
+          const selected = await allocateRadiologist(category, skills_required);
+
+          if (!selected) {
+            console.warn(`⚠️ No available radiologist for ${ticket_id}`);
+            return;
+          }
+
+          await pool.query(
+            `INSERT INTO assignments (ticket_id, radiologist_id, radiologist_name, assigned_at, priority)
+             VALUES ($1, $2, $3, NOW(), $4) RETURNING *`,
+            [ticket_id, selected.id, selected.name, priority || 2]
+          );
+
+          allocationsCounter.inc({ radiologist: selected.name, category });
+          slaGauge.set({ category }, sla_minutes || 0);
+
+          await sendAssignedMessage({
+            case_id: ticket_id,
+            radiologist_id: selected.id,
+            radiologist_name: selected.name,
+            category,
+            assigned_at: new Date().toISOString(),
+          });
+
+          console.log(`✅ Case ${ticket_id} assigned to ${selected.name}`);
+          return;
+        }
+
+        // 🏁 Case completed by radiologist
+        if (topic === "radiology.completed") {
+          const { case_id, radiologist_id, completed_at } = data;
+          console.log(`🏁 Completion event received for case ${case_id} by radiologist ${radiologist_id}`);
+
+          // Mark assignment as completed
+          await pool.query(
+            `UPDATE assignments
+             SET status = 'COMPLETED',
+                 completed_at = $1
+             WHERE ticket_id = $2`,
+            [completed_at || new Date().toISOString(), case_id]
+          );
+
+          // Free the radiologist slot
+          await pool.query(
+            `UPDATE radiologists
+             SET assigned_count = GREATEST(assigned_count - 1, 0),
+                 availability = TRUE
+             WHERE id = $1`,
+            [radiologist_id]
+          );
+
+          console.log(`✅ Case ${case_id} marked as COMPLETED and radiologist ${radiologist_id} freed`);
+          return;
+        }
       } catch (err) {
         console.error("❌ Allocation processing error:", err);
       }

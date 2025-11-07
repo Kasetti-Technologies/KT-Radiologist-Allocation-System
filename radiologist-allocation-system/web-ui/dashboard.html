@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Radiologist Dashboard</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="navbar">
+    <h2 id="doctorName"></h2>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <div class="dashboard">
+    <div class="card">
+      <h3>Declare Availability</h3>
+      <label>Start Time</label>
+      <input id="startTime" type="datetime-local" />
+      <label>End Time</label>
+      <input id="endTime" type="datetime-local" />
+      <button onclick="declareAvailability()">Submit</button>
+      <p id="availabilityMsg"></p>
+    </div>
+
+    <div class="card">
+      <h3>Leave Management</h3>
+      <label>Start Date</label>
+      <input id="leaveStart" type="date" />
+      <label>End Date</label>
+      <input id="leaveEnd" type="date" />
+      <input id="reason" type="text" placeholder="Reason" />
+      <button onclick="applyLeave()">Apply Leave</button>
+      <p id="leaveMsg"></p>
+    </div>
+
+    <div class="card">
+      <h3>Assigned Cases</h3>
+      <button onclick="fetchAssignments()">Refresh</button>
+      <ul id="assignmentList"></ul>
+    </div>
+  </div>
+
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

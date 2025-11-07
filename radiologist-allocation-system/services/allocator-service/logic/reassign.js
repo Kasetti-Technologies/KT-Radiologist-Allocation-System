@@ -1,57 +1,56 @@
 // services/allocator-service/logic/reassign.js
 import { pool } from "../db/connect.js";
 import { allocateRadiologist } from "./allocator.js";
+import { reassignmentsCounter } from "../index.js";
 import { sendAssignedMessage } from "../kafka/producer.js";
-import { reassignmentsCounter } from "../index.js"; // exported from index.js
 
 export const reassignTicket = async (assignment) => {
-  const { id, ticket_id, radiologist_id: oldId, category } = assignment;
   try {
-    // Try to find alternative radiologist (exclude current)
-    const selected = await allocateRadiologist(category, [], [oldId]);
-    if (!selected) {
-      // No alternative — mark escalated
-      await pool.query(`UPDATE assignments SET escalated = true WHERE id = $1`, [id]);
-      return { success: false, reason: "no_alternative" };
+    console.log(`🔄 Attempting reassignment for ticket ${assignment.ticket_id}`);
+
+    // Pick a new radiologist — exclude current one
+    const newRadiologist = await allocateRadiologist(
+      assignment.category,
+      [],
+      [assignment.radiologist_id]
+    );
+
+    if (!newRadiologist) {
+      return { success: false, reason: "No available radiologist for reassignment" };
     }
 
-    // Update assignment with new radiologist
-    const res = await pool.query(
+    // Update assignments table with new radiologist
+    const result = await pool.query(
       `UPDATE assignments
          SET radiologist_id = $1,
              radiologist_name = $2,
-             assigned_at = NOW(),
-             status = 'PENDING',
-             escalated = false
+             reassigned_at = NOW(),
+             status = 'REASSIGNED'
        WHERE id = $3
        RETURNING *`,
-      [selected.id, selected.name, id]
+      [newRadiologist.id, newRadiologist.name, assignment.id]
     );
 
-    // Audit
-    await pool.query(
-      `INSERT INTO allocation_audit (ticket_id, radiologist_id, action, created_at)
-       VALUES ($1, $2, 'REASSIGNED', NOW())`,
-      [ticket_id, selected.id]
-    );
+    const updated = result.rows[0];
+    if (!updated) return { success: false, reason: "Assignment update failed" };
 
-    // Emit metric & downstream event
-    reassignmentsCounter.inc();
+    // Emit Kafka audit event
     await sendAssignedMessage({
-      ticket_id,
-      radiologist_id: selected.id,
-      radiologist_name: selected.name,
-      category,
-      assigned_at: new Date().toISOString(),
-      provenance: {
-        service: "allocator-service",
-        reason: "auto_reassignment",
-      },
+      case_id: assignment.ticket_id,
+      radiologist_id: newRadiologist.id,
+      radiologist_name: newRadiologist.name,
+      category: assignment.category,
+      reassigned_at: new Date().toISOString(),
+      reason: "SLA breach auto-reassignment",
     });
 
-    return { success: true, new: res.rows[0] };
+    // Increment Prometheus counter
+    reassignmentsCounter.inc();
+
+    console.log(`✅ Ticket ${assignment.ticket_id} reassigned to ${newRadiologist.name}`);
+    return { success: true, newRadiologist: newRadiologist.name };
   } catch (err) {
-    console.error("❌ reassignTicket error:", err);
-    return { success: false, reason: "exception", err: err.message };
+    console.error("❌ Error during reassignment:", err);
+    return { success: false, err: err.message };
   }
 };

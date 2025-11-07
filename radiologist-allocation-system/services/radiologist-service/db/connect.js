@@ -1,6 +1,7 @@
-// services/audit-service/db/connect.js
 import pkg from "pg";
 const { Pool } = pkg;
+import dotenv from "dotenv";
+dotenv.config();
 
 export const pool = new Pool({
   user: process.env.DB_USER,
@@ -11,5 +12,5 @@ export const pool = new Pool({
 });
 
 pool.on("connect", () => {
-  console.log("✅ Audit Service connected to Postgres");
+  console.log("✅ Radiologist Service connected to Postgres");
 });

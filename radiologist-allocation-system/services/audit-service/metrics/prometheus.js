@@ -9,7 +9,6 @@ export const auditEventCounter = new client.Counter({
   help: "Total number of audit events received",
   labelNames: ["action", "radiologist", "category"],
 });
-
 register.registerMetric(auditEventCounter);
 
 // Gauge for recent audit activity (per radiologist)
@@ -18,14 +17,9 @@ export const radiologistActivityGauge = new client.Gauge({
   help: "Tracks number of assignments by radiologist (last window)",
   labelNames: ["radiologist", "category"],
 });
-
 register.registerMetric(radiologistActivityGauge);
 
-// Default labels
-register.setDefaultLabels({
-  service: "audit-service",
-});
-
+register.setDefaultLabels({ service: "audit-service" });
 client.collectDefaultMetrics({ register });
 
 export default register;

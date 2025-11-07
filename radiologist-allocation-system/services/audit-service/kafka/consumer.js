@@ -8,7 +8,7 @@ const kafka = new Kafka({
   brokers: [process.env.KAFKA_BROKER],
 });
 
-const consumer = kafka.consumer({ groupId: "audit-group" });
+const consumer = kafka.consumer({ groupId: process.env.KAFKA_GROUP_ID || "audit-group" });
 
 export const startConsumer = async () => {
   await consumer.connect();
@@ -21,7 +21,6 @@ export const startConsumer = async () => {
         const event = JSON.parse(message.value.toString());
         const { ticket_id, radiologist_id, radiologist_name, category, provenance } = event;
 
-        // DB Insert
         await pool.query(
           `INSERT INTO audit_logs (ticket_id, radiologist_id, radiologist_name, category, action, raw_event)
            VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -35,7 +34,6 @@ export const startConsumer = async () => {
           ]
         );
 
-        // Prometheus metrics update
         auditEventCounter.inc({
           action: provenance?.reason || "assignment_recorded",
           radiologist: radiologist_name || "Unknown",

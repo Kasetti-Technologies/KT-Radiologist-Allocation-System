@@ -1,4 +1,5 @@
-FROM node:20
+# services/audit-service/Dockerfile
+FROM node:20-alpine
 
 WORKDIR /app
 COPY . .
@@ -6,4 +7,5 @@ COPY . .
 RUN npm install
 
 EXPOSE 8085
+
 CMD ["npm", "start"]

@@ -177,6 +177,30 @@ services:
       - ras-net
     restart: unless-stopped
 
+  radiologist-service:
+    build:
+      context: ../services/radiologist-service
+    container_name: ras_radiologist_service
+    env_file:
+      - ../services/radiologist-service/.env     # or specify inline envs
+    ports:
+      - "8090:8090"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      - DB_USER=dev
+      - DB_PASSWORD=dev
+      - DB_NAME=radiology
+      - DB_HOST=ras_postgres
+      - DB_PORT=5432
+      - JWT_SECRET=Kasetti@555
+      - KAFKA_BROKER=ras_kafka:29092
+      - KAFKA_TOPIC_AVAILABILITY=radiologist.availability
+    networks:
+      - ras-net
+
+
 
 
 
