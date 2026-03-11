@@ -1,4 +1,7 @@
+version: "3.9"
+
 services:
+
   postgres:
     image: postgres:15
     container_name: ras_postgres
@@ -12,11 +15,14 @@ services:
       - ../db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dev"]
+      test: ["CMD-SHELL", "pg_isready -U dev -d radiology"]
       interval: 5s
+      timeout: 5s
       retries: 5
     networks:
       - ras-net
+    restart: unless-stopped
+
 
   redis:
     image: redis:7
@@ -25,6 +31,8 @@ services:
       - "6379:6379"
     networks:
       - ras-net
+    restart: unless-stopped
+
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
@@ -33,37 +41,39 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "2181:2181"
+      - "2182:2181"
     networks:
       - ras-net
+    restart: unless-stopped
+
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: ras_kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_started
     ports:
-      - "9092:9092"    # For host machine (e.g., Postman)
-      - "29092:29092"  # For internal Docker communication
+      - "9093:9093"
+      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: "ras_zookeeper:2181"
+      KAFKA_ZOOKEEPER_CONNECT: ras_zookeeper:2181
 
-      # ✅ Two listeners: internal (for containers) + external (for host)
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://ras_kafka:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,INTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093,INTERNAL://ras_kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9093 --list || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-
     networks:
       - ras-net
+    restart: unless-stopped
+
 
   base-service:
     build:
@@ -72,19 +82,21 @@ services:
     env_file:
       - ../services/base-service/.env
     depends_on:
-      kafka:
-        condition: service_healthy
       postgres:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
       redis:
         condition: service_started
     environment:
-      - KAFKA_BROKER=ras_kafka:29092
-      - KAFKA_TOPIC=radiology-events
+      KAFKA_BROKER: ras_kafka:29092
+      KAFKA_TOPIC: radiology-events
     ports:
-      - "8080:8080"
+      - "8084:8080"
     networks:
       - ras-net
+    restart: unless-stopped
+
 
   validator-service:
     build:
@@ -95,43 +107,15 @@ services:
       kafka:
         condition: service_healthy
     environment:
-      - KAFKA_BROKER=ras_kafka:29092
-      - KAFKA_TOPIC=radiology-events
-      - KAFKA_GROUP_ID=validator-group
+      KAFKA_BROKER: ras_kafka:29092
+      KAFKA_TOPIC: radiology-events
+      KAFKA_GROUP_ID: validator-group
     ports:
       - "8081:8081"
     networks:
       - ras-net
+    restart: unless-stopped
 
-
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: ras_prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml
-    ports:
-      - "9090:9090"
-    networks:
-      - ras-net
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: ras_grafana
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
-    volumes:
-      - ./grafana_dashboards:/var/lib/grafana/dashboards
-      - ./grafana_provisioning:/etc/grafana/provisioning
-    networks:
-      - ras-net
 
   allocator-service:
     build:
@@ -144,64 +128,101 @@ services:
       kafka:
         condition: service_healthy
     environment:
-      - KAFKA_BROKER=ras_kafka:29092
-      - KAFKA_TOPIC=radiology.validated
-      - KAFKA_GROUP_ID=allocator-group
-      - DB_USER=dev
-      - DB_PASSWORD=dev
-      - DB_NAME=radiology
-      - DB_HOST=ras_postgres
-      - DB_PORT=5432
+      KAFKA_BROKER: ras_kafka:29092
+      KAFKA_TOPIC: radiology.validated
+      KAFKA_GROUP_ID: allocator-group
+      DB_USER: dev
+      DB_PASSWORD: dev
+      DB_NAME: radiology
+      DB_HOST: postgres
+      DB_PORT: 5432
     ports:
       - "8082:8082"
     networks:
       - ras-net
+    restart: unless-stopped
 
-  audit_service:
+
+  audit-service:
     build: ../services/audit-service
     container_name: ras_audit_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DB_USER: dev
+      DB_PASSWORD: dev
+      DB_NAME: radiology
+      DB_HOST: postgres
+      DB_PORT: 5432
+      KAFKA_BROKER: ras_kafka:29092
+      KAFKA_TOPIC: radiology.allocated
     ports:
       - "8085:8085"
-    depends_on:
-      - kafka
-      - postgres   # ✅ service name (not container_name)
-    environment:
-      - DB_USER=dev
-      - DB_PASSWORD=dev
-      - DB_NAME=radiology
-      - DB_HOST=postgres      # ✅ use service name
-      - DB_PORT=5432
-      - KAFKA_BROKER=ras_kafka:29092
-      - KAFKA_TOPIC=radiology.allocated
     networks:
       - ras-net
     restart: unless-stopped
+
 
   radiologist-service:
     build:
       context: ../services/radiologist-service
     container_name: ras_radiologist_service
     env_file:
-      - ../services/radiologist-service/.env     # or specify inline envs
-    ports:
-      - "8090:8090"
+      - ../services/radiologist-service/.env
     depends_on:
-      - postgres
-      - kafka
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
-      - DB_USER=dev
-      - DB_PASSWORD=dev
-      - DB_NAME=radiology
-      - DB_HOST=ras_postgres
-      - DB_PORT=5432
-      - JWT_SECRET=Kasetti@555
-      - KAFKA_BROKER=ras_kafka:29092
-      - KAFKA_TOPIC_AVAILABILITY=radiologist.availability
+      DB_USER: dev
+      DB_PASSWORD: dev
+      DB_NAME: radiology
+      DB_HOST: postgres
+      DB_PORT: 5432
+      JWT_SECRET: Kasetti@555
+      KAFKA_BROKER: ras_kafka:29092
+      KAFKA_TOPIC_AVAILABILITY: radiologist.availability
+    ports:
+      - "8091:8090"
     networks:
       - ras-net
+    restart: unless-stopped
 
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ras_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml
+    ports:
+      - "9091:9090"
+    networks:
+      - ras-net
+    restart: unless-stopped
 
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ras_grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./grafana_dashboards:/var/lib/grafana/dashboards
+      - ./grafana_provisioning:/etc/grafana/provisioning
+    ports:
+      - "3002:3000"
+    networks:
+      - ras-net
+    restart: unless-stopped
 
 
 volumes:

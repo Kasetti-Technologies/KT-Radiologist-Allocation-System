@@ -8,13 +8,14 @@ router.use(authMiddleware);
 
 // GET /api/assignments  -> list assignments for radiologist (from shared DB)
 router.get("/", async (req, res) => {
+  console.log("JWT USER:", req.user);
   try {
     const radiologist_id = req.user.id;
     // Pull assignments from the project's assignments table
-    const q = `SELECT id, ticket_id, radiologist_id, radiologist_name, category, created_at, assigned_at, priority, status, sla_minutes
+    const q = `SELECT id, ticket_id, radiologist_id, radiologist_name, category, created_at, assigned_at, priority, status, sla_minutes,bahmni_url, assigned_at
                FROM assignments
                WHERE radiologist_id = $1
-               ORDER BY created_at DESC
+               ORDER BY assigned_at DESC 
                LIMIT 200`;
     const r = await pool.query(q, [radiologist_id]);
     // optionally add a Bahmni URL for a front-end link (if you have patient/study id in assignments raw data)

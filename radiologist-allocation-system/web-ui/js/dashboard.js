@@ -1,30 +1,31 @@
-const API_BASE = "http://localhost:8090/api";
-let token = localStorage.getItem("jwt");
+const API_BASE = "http://localhost:8091/api";
+const token = localStorage.getItem("token");
 
-async function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+window.onload = () => {
+  if (!token) {
+    window.location.href = "index.html";
+    return;
+  }
 
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  const name = localStorage.getItem("name");
+  document.getElementById("doctorName").textContent = `Welcome, ${name}`;
 
-  const data = await res.json();
-  if (data.ok) {
-    token = data.token;
-    localStorage.setItem("jwt", token);
-    document.getElementById("radiologistName").textContent = data.name;
-    document.getElementById("loginSection").style.display = "none";
-    document.getElementById("dashboard").style.display = "block";
-  } else {
-    alert(data.error || "Login failed");
+  fetchAssignments();
+};
+
+function switchTab(tabId, element) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+
+  element.classList.add("active");
+  document.getElementById(tabId).classList.add("active");
+
+  if (tabId === "cases") {
+    fetchAssignments();
   }
 }
 
 async function declareAvailability() {
-  const day_of_week = document.getElementById("dayOfWeek").value;
   const start_time = document.getElementById("startTime").value;
   const end_time = document.getElementById("endTime").value;
 
@@ -34,15 +35,17 @@ async function declareAvailability() {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ day_of_week, start_time, end_time }),
+    body: JSON.stringify({ start_time, end_time }),
   });
 
   const data = await res.json();
-  alert(data.ok ? "✅ Availability added!" : `❌ ${data.error}`);
+  document.getElementById("availabilityMsg").textContent =
+    data.ok ? "✅ Availability saved" : data.error;
 }
 
 async function applyLeave() {
-  const leave_date = document.getElementById("leaveDate").value;
+  const start_date = document.getElementById("leaveStart").value;
+  const end_date = document.getElementById("leaveEnd").value;
   const reason = document.getElementById("reason").value;
 
   const res = await fetch(`${API_BASE}/leaves`, {
@@ -51,16 +54,50 @@ async function applyLeave() {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ leave_date, reason }),
+    body: JSON.stringify({ start_date, end_date, reason }),
   });
 
   const data = await res.json();
-  alert(data.ok ? "✅ Leave applied!" : `❌ ${data.error}`);
+  document.getElementById("leaveMsg").textContent =
+    data.ok ? "✅ Leave applied" : data.error;
+}
+
+async function fetchAssignments() {
+  try {
+    const res = await fetch(`${API_BASE}/assignments`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json();
+    const table = document.getElementById("assignmentTable");
+    table.innerHTML = "";
+
+    if (!data.ok || !data.data || data.data.length === 0) {
+      table.innerHTML = "<tr><td colspan='5'>No assignments</td></tr>";
+      return;
+    }
+
+    data.data.forEach(a => {
+      const row = `
+        <tr>
+          <td>${a.ticket_id}</td>
+          <td>${a.priority || "-"}</td>
+          <td>${a.status}</td>
+          <td>${a.sla_minutes || "-"}</td>
+          <td>${a.assigned_at ? new Date(a.assigned_at).toLocaleString() : "-"}</td>
+        </tr>
+      `;
+      table.innerHTML += row;
+    });
+
+  } catch (err) {
+    console.error("Assignment fetch error:", err);
+  }
 }
 
 function logout() {
-  localStorage.removeItem("jwt");
-  token = null;
-  document.getElementById("loginSection").style.display = "block";
-  document.getElementById("dashboard").style.display = "none";
+  localStorage.clear();
+  window.location.href = "index.html";
 }

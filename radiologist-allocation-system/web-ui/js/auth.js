@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8090/api/auth";
+const API_BASE = "http://localhost:8091/api/auth";
 
 async function login() {
   const email = document.getElementById("email").value;

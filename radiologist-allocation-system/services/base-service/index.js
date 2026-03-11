@@ -12,7 +12,7 @@ const app = express();
 app.use(express.json());
 app.use("/api", healthRouter);
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8084;
 
 // ✅ Setup Prometheus metrics
 const register = new client.Registry();

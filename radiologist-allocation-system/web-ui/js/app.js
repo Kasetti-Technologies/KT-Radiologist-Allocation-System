@@ -1,14 +1,18 @@
 // web-ui/js/app.js
 
-const API_BASE = "http://localhost:8090/api";
+const API_BASE = "http://localhost:8091/api";
 const app = document.getElementById("app");
 
 function showAlert(message, type = "success") {
-  const alert = document.createElement("div");
-  alert.className = `alert ${type === "success" ? "alert-success" : "alert-error"}`;
-  alert.textContent = message;
-  app.prepend(alert);
-  setTimeout(() => alert.remove(), 4000);
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerText = message;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 3000);
 }
 
 function renderLogin() {
@@ -53,18 +57,30 @@ async function login() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
+
     const data = await res.json();
 
-    if (!data.ok) return showAlert(data.error, "error");
+    if (!res.ok || !data.ok) {
+      showAlert(data.error || "Invalid credentials", "error");
+      return;
+    }
 
     localStorage.setItem("token", data.token);
     localStorage.setItem("name", data.name);
     localStorage.setItem("specialization", data.specialization);
-    renderDashboard();
+
+    showAlert("Login successful!", "success");
+
+    setTimeout(() => {
+      renderDashboard();
+    }, 500);
+
   } catch (err) {
-    showAlert("Login failed", "error");
+    console.error("Login error:", err);
+    showAlert("Login failed due to network/server error", "error");
   }
 }
+
 
 async function register() {
   const name = document.getElementById("name").value.trim();
@@ -91,34 +107,64 @@ async function register() {
 
 function renderDashboard() {
   const name = localStorage.getItem("name");
+
   app.innerHTML = `
     <div class="container">
       <h2>🩻 Radiologist Portal</h2>
       <p>Welcome, <b>${name}</b></p>
 
-      <label>Start Time</label>
-      <input id="start_time" type="datetime-local" />
-      <label>End Time</label>
-      <input id="end_time" type="datetime-local" />
-      <button id="availabilityBtn">Submit Availability</button>
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('availability')">Time Slots</div>
+        <div class="tab" onclick="switchTab('leave')">Leave</div>
+        <div class="tab" onclick="switchTab('cases')">My Cases</div>
+      </div>
 
-      <hr />
-      <label>Leave Start Date</label>
-      <input id="start_date" type="date" />
-      <label>Leave End Date</label>
-      <input id="end_date" type="date" />
-      <label>Reason</label>
-      <textarea id="reason" placeholder="Reason for leave"></textarea>
-      <button id="leaveBtn">Apply Leave</button>
+      <!-- Availability -->
+      <div id="availability" class="tab-content active">
+        <label>Start Time</label>
+        <input id="start_time" type="datetime-local" />
+        <label>End Time</label>
+        <input id="end_time" type="datetime-local" />
+        <button onclick="submitAvailability()">Submit</button>
+      </div>
 
-      <div class="logout" id="logoutBtn">Logout</div>
+      <!-- Leave -->
+      <div id="leave" class="tab-content">
+        <label>Start Date</label>
+        <input id="start_date" type="date" />
+        <label>End Date</label>
+        <input id="end_date" type="date" />
+        <label>Reason</label>
+        <textarea id="reason"></textarea>
+        <button onclick="applyLeave()">Apply Leave</button>
+      </div>
+
+      <!-- My Cases -->
+      <div id="cases" class="tab-content">
+        <button onclick="fetchAssignments()">Refresh</button>
+        <br><br>
+        <table>
+          <thead>
+            <tr>
+              <th>Ticket</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>SLA</th>
+              <th>Assigned At</th>
+            </tr>
+          </thead>
+          <tbody id="assignmentTable"></tbody>
+        </table>
+      </div>
+
+      <div class="logout" onclick="logout()">Logout</div>
     </div>
   `;
 
-  document.getElementById("availabilityBtn").onclick = submitAvailability;
-  document.getElementById("leaveBtn").onclick = applyLeave;
-  document.getElementById("logoutBtn").onclick = logout;
+  addTabStyles();
+  fetchAssignments();
 }
+
 
 async function submitAvailability() {
   const start_time = document.getElementById("start_time").value;
@@ -171,6 +217,92 @@ function logout() {
   localStorage.clear();
   renderLogin();
 }
+
+function switchTab(tabId) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+
+  event.target.classList.add("active");
+  document.getElementById(tabId).classList.add("active");
+}
+
+async function completeCase(ticket_id) {
+  const token = localStorage.getItem("token");
+
+  try {
+    const res = await fetch(`${API_BASE}/complete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        case_id: ticket_id,
+        radiologist_id: 1   // optional if backend extracts from JWT
+      }),
+    });
+
+    const data = await res.json();
+
+    if (data.ok) {
+      showAlert("Case marked as completed!", "success");
+      fetchAssignments();
+    } else {
+      showAlert(data.error, "error");
+    }
+
+  } catch (err) {
+    showAlert("Failed to complete case", "error");
+  }
+}
+
+
+async function fetchAssignments() {
+  const token = localStorage.getItem("token");
+
+  try {
+    const res = await fetch(`${API_BASE}/assignments`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const data = await res.json();
+    const table = document.getElementById("assignmentTable");
+    table.innerHTML = "";
+
+    const assignments = data.data || [];
+
+    if (!assignments.length) {
+      table.innerHTML = "<tr><td colspan='6'>No assignments</td></tr>";
+      return;
+    }
+
+    assignments
+  .filter(a => a.status !== "COMPLETED")
+  .forEach(a => {
+    table.innerHTML += `
+      <tr>
+        <td>${a.ticket_id}</td>
+        <td>${a.patient_name || "-"}</td>
+        <td>${a.priority}</td>
+        <td>${a.status}</td>
+        <td>
+          <a href="${a.bahmni_url}" target="_blank">Open</a>
+          <button class="complete-btn"
+            onclick="completeCase('${a.ticket_id}')">
+            Complete
+          </button>
+        </td>
+        <td>${new Date(a.assigned_at).toLocaleString()}</td>
+      </tr>
+    `;
+});
+
+
+  } catch (err) {
+    console.error("Assignment fetch error:", err);
+  }
+}
+
 
 window.onload = () => {
   const token = localStorage.getItem("token");

@@ -11,6 +11,7 @@ import radiologistsRoutes from "./routes/radiologists.js";
 import availabilityRoutes from "./routes/availability.js";   // ✅ ADD THIS LINE
 import leavesRoutes from "./routes/leaves.js";               // ✅ ADD THIS LINE
 import completionRoutes from "./routes/completion.js";
+import assignmentsRoutes from "./routes/assignments.js"; // ✅ NEW
 
 const app = express();
 app.use(express.json());
@@ -25,8 +26,9 @@ app.use("/api/radiologists", radiologistsRoutes);
 app.use("/api/availability", availabilityRoutes);   // ✅ ADD THIS LINE
 app.use("/api/leaves", leavesRoutes);               // ✅ ADD THIS LINE
 app.use("/api/complete", completionRoutes); // ✅ NEW
+app.use("/api/assignments", assignmentsRoutes); // ✅ NEW
 
-const PORT = process.env.PORT || 8090;
+const PORT = process.env.PORT || 8091;
 
 runMigration().then(() => {
   app.listen(PORT, () => console.log(`🚀 Radiologist Service running on http://localhost:${PORT}`));

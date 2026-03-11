@@ -1,46 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Radiologist Dashboard</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div class="navbar">
-    <h2 id="doctorName"></h2>
-    <button onclick="logout()">Logout</button>
+
+<div class="overlay"></div>
+
+<div class="container">
+  <h2>🩻 Radiologist Portal</h2>
+  <p id="doctorName" class="welcome"></p>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('availability', this)">Time Slots</div>
+    <div class="tab" onclick="switchTab('leave', this)">Leave</div>
+    <div class="tab" onclick="switchTab('cases', this)">My Cases</div>
   </div>
 
-  <div class="dashboard">
-    <div class="card">
-      <h3>Declare Availability</h3>
+  <!-- Availability -->
+  <div id="availability" class="tab-content active">
+    <div class="form-group">
       <label>Start Time</label>
       <input id="startTime" type="datetime-local" />
+    </div>
+
+    <div class="form-group">
       <label>End Time</label>
       <input id="endTime" type="datetime-local" />
-      <button onclick="declareAvailability()">Submit</button>
-      <p id="availabilityMsg"></p>
     </div>
 
-    <div class="card">
-      <h3>Leave Management</h3>
-      <label>Start Date</label>
-      <input id="leaveStart" type="date" />
-      <label>End Date</label>
-      <input id="leaveEnd" type="date" />
-      <input id="reason" type="text" placeholder="Reason" />
-      <button onclick="applyLeave()">Apply Leave</button>
-      <p id="leaveMsg"></p>
-    </div>
-
-    <div class="card">
-      <h3>Assigned Cases</h3>
-      <button onclick="fetchAssignments()">Refresh</button>
-      <ul id="assignmentList"></ul>
-    </div>
+    <button class="primary-btn" onclick="declareAvailability()">Submit</button>
+    <p id="availabilityMsg"></p>
   </div>
 
-  <script src="js/dashboard.js"></script>
+  <!-- Leave -->
+  <div id="leave" class="tab-content">
+    <div class="form-group">
+      <label>Start Date</label>
+      <input id="leaveStart" type="date" />
+    </div>
+
+    <div class="form-group">
+      <label>End Date</label>
+      <input id="leaveEnd" type="date" />
+    </div>
+
+    <div class="form-group">
+      <label>Reason</label>
+      <input id="reason" type="text" placeholder="Reason" />
+    </div>
+
+    <button class="primary-btn" onclick="applyLeave()">Apply Leave</button>
+    <p id="leaveMsg"></p>
+  </div>
+
+  <!-- My Cases -->
+  <div id="cases" class="tab-content">
+    <button class="refresh-btn" onclick="fetchAssignments()">Refresh</button>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>Patient</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Review</th>
+          <th>Assigned At</th>
+        </tr>
+      </thead>
+      <tbody id="assignmentTable"></tbody>
+    </table>
+  </div>
+
+  <div class="logout">
+    <button class="logout-btn" onclick="logout()">Logout</button>
+  </div>
+</div>
+
+<script src="js/dashboard.js"></script>
 </body>
 </html>

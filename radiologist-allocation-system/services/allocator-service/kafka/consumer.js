@@ -64,11 +64,20 @@ export const startConsumer = async () => {
             return;
           }
 
-          await pool.query(
-            `INSERT INTO assignments (ticket_id, radiologist_id, radiologist_name, assigned_at, priority)
-             VALUES ($1, $2, $3, NOW(), $4) RETURNING *`,
-            [ticket_id, selected.id, selected.name, priority || 2]
-          );
+            await pool.query(
+            `INSERT INTO assignments 
+            (ticket_id, radiologist_id, radiologist_name, category, priority, sla_minutes, status, bahmni_url, assigned_at)
+            VALUES ($1, $2, $3, $4, $5, $6, 'ASSIGNED', $7, NOW())`,
+            [
+            ticket_id,
+            selected.id,
+            selected.name,
+            category,
+            priority || 2,
+            sla_minutes || 0,
+            data.bahmni_url || null
+            ]
+              );
 
           allocationsCounter.inc({ radiologist: selected.name, category });
           slaGauge.set({ category }, sla_minutes || 0);
