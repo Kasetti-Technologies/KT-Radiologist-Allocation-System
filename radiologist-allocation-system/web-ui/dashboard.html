@@ -59,22 +59,26 @@
 
   <!-- My Cases -->
   <div id="cases" class="tab-content">
-    <button class="refresh-btn" onclick="fetchAssignments()">Refresh</button>
-
-    <table>
-      <thead>
-        <tr>
-          <th>Ticket</th>
-          <th>Patient</th>
-          <th>Priority</th>
-          <th>Status</th>
-          <th>Review</th>
-          <th>Assigned At</th>
-        </tr>
-      </thead>
-      <tbody id="assignmentTable"></tbody>
-    </table>
+  <div class="cases-header">
+    <h3>Assigned Cases</h3>
+    <button class="refresh-btn" onclick="fetchAssignments()">🔄 Refresh</button>
   </div>
+
+  <table class="modern-table">
+    <thead>
+      <tr>
+        <th>Ticket</th>
+        <th>Category</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th>Viewer</th>
+        <th>Action</th>
+        <th>Assigned At</th>
+      </tr>
+    </thead>
+    <tbody id="assignmentTable"></tbody>
+  </table>
+</div>
 
   <div class="logout">
     <button class="logout-btn" onclick="logout()">Logout</button>
