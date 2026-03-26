@@ -1,90 +1,161 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Radiologist Dashboard</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+  <div class="overlay"></div>
+  <div class="bg-orb bg-orb-one"></div>
+  <div class="bg-orb bg-orb-two"></div>
 
-<div class="overlay"></div>
-
-<div class="container">
-  <h2>🩻 Radiologist Portal</h2>
-  <p id="doctorName" class="welcome"></p>
-
-  <!-- Tabs -->
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('availability', this)">Time Slots</div>
-    <div class="tab" onclick="switchTab('leave', this)">Leave</div>
-    <div class="tab" onclick="switchTab('cases', this)">My Cases</div>
-  </div>
-
-  <!-- Availability -->
-  <div id="availability" class="tab-content active">
-    <div class="form-group">
-      <label>Start Time</label>
-      <input id="startTime" type="datetime-local" />
+  <div class="container">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Radiologist workspace</p>
+        <h2>Radiologist Portal</h2>
+        <p id="doctorName" class="welcome"></p>
+      </div>
+      <div class="hero-card">
+        <span class="hero-label">Today's focus</span>
+        <strong>Review assignments, update availability, and keep turnaround smooth.</strong>
+      </div>
     </div>
 
-    <div class="form-group">
-      <label>End Time</label>
-      <input id="endTime" type="datetime-local" />
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('availability', this)">Time Slots</div>
+      <div class="tab" onclick="switchTab('leave', this)">Leave</div>
+      <div class="tab" onclick="switchTab('cases', this)">My Cases</div>
     </div>
 
-    <button class="primary-btn" onclick="declareAvailability()">Submit</button>
-    <p id="availabilityMsg"></p>
-  </div>
-
-  <!-- Leave -->
-  <div id="leave" class="tab-content">
-    <div class="form-group">
-      <label>Start Date</label>
-      <input id="leaveStart" type="date" />
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">Open cases</span>
+        <strong id="openCasesCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Completed cases</span>
+        <strong id="completedCasesCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Active slots</span>
+        <strong id="activeSlotsCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Specialization</span>
+        <strong id="specializationText">Not set</strong>
+      </div>
     </div>
 
-    <div class="form-group">
-      <label>End Date</label>
-      <input id="leaveEnd" type="date" />
+    <div id="availability" class="tab-content active">
+      <div class="content-card">
+        <div class="section-copy">
+          <h3>Declare availability</h3>
+          <p>Share your working window so the allocator can route incoming cases correctly.</p>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Start Time</label>
+            <input id="startTime" type="datetime-local" />
+          </div>
+
+          <div class="form-group">
+            <label>End Time</label>
+            <input id="endTime" type="datetime-local" />
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <button class="primary-btn" type="button" onclick="declareAvailability()">Submit</button>
+          <p id="availabilityMsg" class="inline-message"></p>
+        </div>
+
+        <div class="list-panel">
+          <div class="panel-head">
+            <h4>Recent availability slots</h4>
+            <span class="panel-note">Latest submitted time windows</span>
+          </div>
+          <div id="availabilityList" class="data-list"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="form-group">
-      <label>Reason</label>
-      <input id="reason" type="text" placeholder="Reason" />
+    <div id="leave" class="tab-content">
+      <div class="content-card">
+        <div class="section-copy">
+          <h3>Plan your leave</h3>
+          <p>Block unavailable dates in advance so active case assignments stay accurate.</p>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Start Date</label>
+            <input id="leaveStart" type="date" />
+          </div>
+
+          <div class="form-group">
+            <label>End Date</label>
+            <input id="leaveEnd" type="date" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Reason</label>
+          <input id="reason" type="text" placeholder="Reason for leave" />
+        </div>
+
+        <div class="actions-row">
+          <button class="primary-btn" type="button" onclick="applyLeave()">Apply Leave</button>
+          <p id="leaveMsg" class="inline-message"></p>
+        </div>
+
+        <div class="list-panel">
+          <div class="panel-head">
+            <h4>Leave history</h4>
+            <span class="panel-note">Track submitted leave requests</span>
+          </div>
+          <div id="leaveList" class="data-list"></div>
+        </div>
+      </div>
     </div>
 
-    <button class="primary-btn" onclick="applyLeave()">Apply Leave</button>
-    <p id="leaveMsg"></p>
+    <div id="cases" class="tab-content">
+      <div class="content-card">
+        <div class="cases-header">
+          <div>
+            <h3>Assigned Cases</h3>
+            <p class="section-note">Open the case directly in Bahmni and mark it complete when finished.</p>
+          </div>
+          <button class="refresh-btn" type="button" onclick="fetchAssignments()">Refresh</button>
+        </div>
+
+        <div class="table-shell">
+          <table class="modern-table">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Viewer</th>
+                <th>Action</th>
+                <th>Assigned At</th>
+              </tr>
+            </thead>
+            <tbody id="assignmentTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="logout">
+      <button class="logout-btn" type="button" onclick="logout()">Logout</button>
+    </div>
   </div>
 
-  <!-- My Cases -->
-  <div id="cases" class="tab-content">
-  <div class="cases-header">
-    <h3>Assigned Cases</h3>
-    <button class="refresh-btn" onclick="fetchAssignments()">🔄 Refresh</button>
-  </div>
-
-  <table class="modern-table">
-    <thead>
-      <tr>
-        <th>Ticket</th>
-        <th>Category</th>
-        <th>Priority</th>
-        <th>Status</th>
-        <th>Viewer</th>
-        <th>Action</th>
-        <th>Assigned At</th>
-      </tr>
-    </thead>
-    <tbody id="assignmentTable"></tbody>
-  </table>
-</div>
-
-  <div class="logout">
-    <button class="logout-btn" onclick="logout()">Logout</button>
-  </div>
-</div>
-
-<script src="js/dashboard.js"></script>
+  <script src="js/dashboard.js"></script>
 </body>
 </html>

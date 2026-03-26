@@ -19,4 +19,20 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.get("/", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, start_date, end_date, reason, status, created_at
+       FROM leave_requests
+       WHERE radiologist_id = $1
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+
+    res.json({ ok: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 export default router;

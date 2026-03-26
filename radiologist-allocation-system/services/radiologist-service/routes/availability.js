@@ -16,11 +16,22 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ ok: false, error: "start_time and end_time required" });
     }
 
+    if (new Date(start_time) >= new Date(end_time)) {
+      return res.status(400).json({ ok: false, error: "end_time must be after start_time" });
+    }
+
     const result = await pool.query(
       `INSERT INTO availability_slots (radiologist_id, start_time, end_time, is_booked)
        VALUES ($1, $2, $3, FALSE)
        RETURNING *`,
       [radiologist_id, start_time, end_time]
+    );
+
+    await pool.query(
+      `UPDATE radiologists
+       SET availability = TRUE
+       WHERE id = $1`,
+      [radiologist_id]
     );
 
     res.json({ ok: true, data: result.rows[0] });

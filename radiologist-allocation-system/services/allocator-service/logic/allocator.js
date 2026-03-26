@@ -1,54 +1,83 @@
-// services/allocator-service/logic/allocator.js
 import { pool } from "../db/connect.js";
 
 /**
  * allocateRadiologist(category, skills_required = [], excludeIds = [])
- * - returns a radiologist row { id, name, specialization, assigned_count, availability } or null
+ * - one active case per radiologist at a time
  */
 export const allocateRadiologist = async (category, skills_required = [], excludeIds = []) => {
-  console.log(`🔍 Matching radiologist for category: ${category}`);
+  console.log(`Matching radiologist for category: ${category}`);
 
   try {
-    // Build SQL components
-    const excludeClause = (excludeIds && excludeIds.length) ? `AND id NOT IN (${excludeIds.join(",")})` : "";
-    // Use postgres ANY() for skills array - ensure we pass an array param
-    // We'll supply skills_required as a Postgres array param ($2) and category as $1
+    const excludeClause = (excludeIds && excludeIds.length)
+      ? `AND id NOT IN (${excludeIds.join(",")})`
+      : "";
+
+    const normalizedCategory = String(category || "").trim().toUpperCase();
+    const normalizedSkills = (skills_required || [])
+      .map((skill) => String(skill || "").trim().toUpperCase())
+      .filter(Boolean);
+
     const query = `
       SELECT r.id, r.name, r.specialization, r.assigned_count, r.availability
       FROM radiologists r
       WHERE r.availability = TRUE
+        AND EXISTS (
+          SELECT 1
+          FROM availability_slots slot
+          WHERE slot.radiologist_id = r.id
+            AND slot.is_booked = FALSE
+            AND NOW() BETWEEN slot.start_time AND slot.end_time
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM leave_requests lr
+          WHERE lr.radiologist_id = r.id
+            AND CURRENT_DATE BETWEEN lr.start_date AND lr.end_date
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM assignments a
+          WHERE a.radiologist_id = r.id
+            AND a.status <> 'COMPLETED'
+        )
         AND (
-              r.specialization = $1
-              ${skills_required && skills_required.length ? ` OR r.specialization = ANY($2)` : ""}
+          array_position(string_to_array(replace(upper(r.specialization), ' ', ''), ','), replace($1, ' ', '')) IS NOT NULL
+          ${normalizedSkills.length ? ` OR EXISTS (
+            SELECT 1
+            FROM unnest($2::text[]) AS skill
+            WHERE array_position(string_to_array(replace(upper(r.specialization), ' ', ''), ','), replace(skill, ' ', '')) IS NOT NULL
+          )` : ""}
         )
       ${excludeClause}
-      ORDER BY r.assigned_count ASC, RANDOM()
+      ORDER BY RANDOM()
       LIMIT 1;
     `;
 
-    const params = skills_required && skills_required.length ? [category, skills_required] : [category];
+    const params = normalizedSkills.length
+      ? [normalizedCategory, normalizedSkills]
+      : [normalizedCategory];
+
     const result = await pool.query(query, params);
     const selected = result.rows[0];
+
     if (!selected) {
-      console.warn(`⚠️ No available radiologist found for ${category}`);
+      console.warn(`No available radiologist found for ${category}`);
       return null;
     }
 
-    console.log(`✅ Selected radiologist: ${selected.name} (${selected.specialization})`);
+    console.log(`Selected radiologist: ${selected.name} (${selected.specialization})`);
 
-    // increment assigned_count and update availability threshold (e.g., lock when >= 5)
     await pool.query(
       `UPDATE radiologists
          SET assigned_count = assigned_count + 1,
-             availability = CASE WHEN assigned_count + 1 >= 5 THEN FALSE ELSE TRUE END
+             availability = FALSE
        WHERE id = $1`,
       [selected.id]
     );
 
-    // return selected (note: assigned_count returned here is pre-increment value)
     return selected;
   } catch (err) {
-    console.error("❌ Error in allocation logic:", err);
+    console.error("Error in allocation logic:", err);
     return null;
   }
 };
