@@ -219,7 +219,7 @@ services:
       - ./grafana_dashboards:/var/lib/grafana/dashboards
       - ./grafana_provisioning:/etc/grafana/provisioning
     ports:
-      - "3002:3000"
+      - "3003:3000"
     networks:
       - ras-net
     restart: unless-stopped
