@@ -1,4 +1,3 @@
-// services/allocator-service/kafka/producer.js
 import { Kafka } from "kafkajs";
 
 const kafka = new Kafka({
@@ -10,18 +9,22 @@ export const producer = kafka.producer();
 
 export const connectProducer = async () => {
   await producer.connect();
-  console.log("✅ Allocator Kafka Producer connected");
+  console.log("Allocator Kafka Producer connected");
 };
 
-// Send audit/assignment events to "radiology.allocated"
 export const sendAssignedMessage = async (payload) => {
   try {
+    const normalizedPayload = {
+      ...payload,
+      ticket_id: payload.ticket_id || payload.case_id || null,
+    };
+
     await producer.send({
       topic: "radiology.allocated",
-      messages: [{ value: JSON.stringify(payload) }],
+      messages: [{ value: JSON.stringify(normalizedPayload) }],
     });
-    console.log(`📤 Sent assigned message for ticket ${payload.case_id || payload.ticket_id}`);
+    console.log(`Sent assigned message for ticket ${normalizedPayload.ticket_id}`);
   } catch (err) {
-    console.error("🚨 Failed to send assigned message:", err);
+    console.error("Failed to send assigned message:", err);
   }
 };

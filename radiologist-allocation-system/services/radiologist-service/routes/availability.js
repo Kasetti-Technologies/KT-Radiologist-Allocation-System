@@ -2,6 +2,7 @@
 import express from "express";
 import { pool } from "../db/connect.js";
 import { authMiddleware } from "../utils/auth.js";
+import { sendAvailabilityUpdate } from "../kafka/producer.js";
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -20,6 +21,19 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ ok: false, error: "end_time must be after start_time" });
     }
 
+    const overlap = await pool.query(
+      `SELECT 1
+       FROM availability_slots
+       WHERE radiologist_id = $1
+         AND tstzrange(start_time, end_time, '[)') && tstzrange($2::timestamp, $3::timestamp, '[)')
+       LIMIT 1`,
+      [radiologist_id, start_time, end_time]
+    );
+
+    if (overlap.rows.length) {
+      return res.status(400).json({ ok: false, error: "Overlapping availability slot already exists" });
+    }
+
     const result = await pool.query(
       `INSERT INTO availability_slots (radiologist_id, start_time, end_time, is_booked)
        VALUES ($1, $2, $3, FALSE)
@@ -33,6 +47,14 @@ router.post("/", async (req, res) => {
        WHERE id = $1`,
       [radiologist_id]
     );
+
+    await sendAvailabilityUpdate({
+      radiologist_id,
+      slot_id: result.rows[0].id,
+      start_time: result.rows[0].start_time,
+      end_time: result.rows[0].end_time,
+      specialization: req.user.specialization || null,
+    });
 
     res.json({ ok: true, data: result.rows[0] });
   } catch (err) {

@@ -1,50 +1,44 @@
-// services/radiologist-service/db/migrations.js
 import { pool } from "./connect.js";
 
 export const runMigrations = async () => {
-  console.log("🏗️ Running migrations for Radiologist Service...");
+  console.log("Running migrations for Allocator Service...");
 
-  // Radiologists
   await pool.query(`
     CREATE TABLE IF NOT EXISTS radiologists (
       id SERIAL PRIMARY KEY,
-      name VARCHAR(150) NOT NULL,
-      email VARCHAR(150) UNIQUE NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      specialization VARCHAR(100) NOT NULL,
-      status VARCHAR(50) DEFAULT 'ACTIVE',
+      specialization VARCHAR(255),
+      availability BOOLEAN DEFAULT true,
       assigned_count INT DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      availability BOOLEAN DEFAULT TRUE
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 
-  // Availability
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS availability (
+    CREATE TABLE IF NOT EXISTS availability_slots (
       id SERIAL PRIMARY KEY,
       radiologist_id INT REFERENCES radiologists(id) ON DELETE CASCADE,
-      available_from TIMESTAMP NOT NULL,
-      available_to TIMESTAMP NOT NULL,
-      status VARCHAR(50) DEFAULT 'AVAILABLE',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      start_time TIMESTAMP NOT NULL,
+      end_time TIMESTAMP NOT NULL,
+      is_booked BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 
-  // Leaves
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS leaves (
+    CREATE TABLE IF NOT EXISTS leave_requests (
       id SERIAL PRIMARY KEY,
       radiologist_id INT REFERENCES radiologists(id) ON DELETE CASCADE,
-      leave_from TIMESTAMP NOT NULL,
-      leave_to TIMESTAMP NOT NULL,
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
       reason TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      status VARCHAR(50) DEFAULT 'PENDING',
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 
-  // Assignments
   await pool.query(`
     CREATE TABLE IF NOT EXISTS assignments (
       id SERIAL PRIMARY KEY,
@@ -54,32 +48,50 @@ export const runMigrations = async () => {
       category VARCHAR(100),
       priority VARCHAR(50),
       sla_minutes INT,
-      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      assigned_at TIMESTAMP,
       completed_at TIMESTAMP,
-      status VARCHAR(50) DEFAULT 'ASSIGNED',
+      status VARCHAR(50) DEFAULT 'PENDING',
       sla_status VARCHAR(50) DEFAULT 'WITHIN_SLA',
       breach BOOLEAN DEFAULT FALSE,
       bahmni_url TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      escalated BOOLEAN DEFAULT FALSE
+      escalated BOOLEAN DEFAULT FALSE,
+      booked_slot_id INT REFERENCES availability_slots(id),
+      retry_count INT DEFAULT 0,
+      last_retry_at TIMESTAMP
     );
   `);
 
-
-  // Audit Logs
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id SERIAL PRIMARY KEY,
-      ticket_id VARCHAR(100),
-      radiologist_id INT,
-      event_type VARCHAR(100),
-      old_status VARCHAR(100),
-      new_status VARCHAR(100),
-      message TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS booked_slot_id INT REFERENCES availability_slots(id);
   `);
 
-  console.log("✅ Radiologist DB migrations completed successfully.");
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS last_retry_at TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ALTER COLUMN assigned_at DROP DEFAULT;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_assignments_status_created_at
+    ON assignments(status, created_at);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_assignments_radiologist_status
+    ON assignments(radiologist_id, status);
+  `);
+
+  console.log("Allocator Service DB migrations completed");
 };

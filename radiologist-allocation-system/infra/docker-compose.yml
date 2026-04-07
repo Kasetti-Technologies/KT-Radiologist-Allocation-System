@@ -136,6 +136,7 @@ services:
       DB_NAME: radiology
       DB_HOST: postgres
       DB_PORT: 5432
+      BILLING_WEBHOOK_URL: https://webhook.site/cb632dde-8aae-4d1c-b23c-06bdb3d87e4d
     ports:
       - "8082:8082"
     networks:

@@ -1,6 +1,7 @@
 import express from "express";
 import { pool } from "../db/connect.js";
 import { authMiddleware } from "../utils/auth.js";
+import { sendLeaveUpdate } from "../kafka/producer.js";
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -8,11 +9,35 @@ router.use(authMiddleware);
 router.post("/", async (req, res) => {
   try {
     const { start_date, end_date, reason } = req.body;
+    if (!start_date || !end_date) {
+      return res.status(400).json({ ok: false, error: "start_date and end_date are required" });
+    }
+
+    if (new Date(start_date) > new Date(end_date)) {
+      return res.status(400).json({ ok: false, error: "end_date must be on or after start_date" });
+    }
+
     const r = await pool.query(
       `INSERT INTO leave_requests (radiologist_id, start_date, end_date, reason)
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [req.user.id, start_date, end_date, reason]
     );
+
+    await pool.query(
+      `UPDATE radiologists
+       SET availability = FALSE
+       WHERE id = $1
+         AND CURRENT_DATE BETWEEN $2::date AND $3::date`,
+      [req.user.id, start_date, end_date]
+    );
+
+    await sendLeaveUpdate({
+      radiologist_id: req.user.id,
+      start_date,
+      end_date,
+      reason: reason || null,
+    });
+
     res.json({ ok: true, data: r.rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

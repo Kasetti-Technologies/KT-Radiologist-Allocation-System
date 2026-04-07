@@ -23,6 +23,10 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ ok: false, error: "name, email, password, and specialization are required" });
     }
 
+    if (String(password).length < 6) {
+      return res.status(400).json({ ok: false, error: "password must be at least 6 characters" });
+    }
+
     const hash = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
@@ -38,6 +42,9 @@ router.post("/register", async (req, res) => {
     res.json({ ok: true, token, name: user.name, specialization: user.specialization });
   } catch (err) {
     console.error(err);
+    if (err.code === "23505") {
+      return res.status(409).json({ ok: false, error: "email already registered" });
+    }
     res.status(500).json({ ok: false, error: err.message });
   }
 });
