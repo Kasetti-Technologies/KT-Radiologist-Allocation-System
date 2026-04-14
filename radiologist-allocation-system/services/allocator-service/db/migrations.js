@@ -6,6 +6,7 @@ export const runMigrations = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS radiologists (
       id SERIAL PRIMARY KEY,
+      radiologist_code VARCHAR(20) UNIQUE,
       name VARCHAR(255) NOT NULL,
       email VARCHAR(255) UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
@@ -14,6 +15,22 @@ export const runMigrations = async () => {
       assigned_count INT DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS radiologist_code VARCHAR(20);
+  `);
+
+  await pool.query(`
+    UPDATE radiologists
+    SET radiologist_code = 'RAD' || LPAD(id::text, 3, '0')
+    WHERE radiologist_code IS NULL;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_radiologists_code_unique
+    ON radiologists(radiologist_code);
   `);
 
   await pool.query(`
@@ -43,7 +60,12 @@ export const runMigrations = async () => {
     CREATE TABLE IF NOT EXISTS assignments (
       id SERIAL PRIMARY KEY,
       ticket_id VARCHAR(100) UNIQUE NOT NULL,
+      hospital_id VARCHAR(100),
+      study_uid VARCHAR(255),
+      patient_uuid VARCHAR(100),
+      encounter_uuid VARCHAR(100),
       radiologist_id INT REFERENCES radiologists(id),
+      radiologist_code VARCHAR(20),
       radiologist_name VARCHAR(150),
       category VARCHAR(100),
       priority VARCHAR(50),
@@ -61,6 +83,31 @@ export const runMigrations = async () => {
       retry_count INT DEFAULT 0,
       last_retry_at TIMESTAMP
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS hospital_id VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS study_uid VARCHAR(255);
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS patient_uuid VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS encounter_uuid VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS radiologist_code VARCHAR(20);
   `);
 
   await pool.query(`

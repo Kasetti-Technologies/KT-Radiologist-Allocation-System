@@ -3,6 +3,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const generateToken = (user) => {
+  if (!user?.id || !user?.email) {
+    throw new Error("Cannot generate token without a valid radiologist record");
+  }
+
   return jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
     expiresIn: "2h",
   });

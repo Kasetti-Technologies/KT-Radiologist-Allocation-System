@@ -17,6 +17,19 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ ok: false, error: "end_date must be on or after start_date" });
     }
 
+    const overlap = await pool.query(
+      `SELECT 1
+       FROM leave_requests
+       WHERE radiologist_id = $1
+         AND daterange(start_date, end_date + 1, '[)') && daterange($2::date, $3::date + 1, '[)')
+       LIMIT 1`,
+      [req.user.id, start_date, end_date]
+    );
+
+    if (overlap.rows.length) {
+      return res.status(400).json({ ok: false, error: "Overlapping leave request already exists" });
+    }
+
     const r = await pool.query(
       `INSERT INTO leave_requests (radiologist_id, start_date, end_date, reason)
        VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -47,7 +60,18 @@ router.post("/", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, start_date, end_date, reason, status, created_at
+      `SELECT
+         id,
+         start_date,
+         end_date,
+         reason,
+         status,
+         created_at,
+         CASE
+           WHEN CURRENT_DATE < start_date THEN 'UPCOMING'
+           WHEN CURRENT_DATE BETWEEN start_date AND end_date THEN 'ACTIVE'
+           ELSE 'COMPLETED'
+         END AS display_status
        FROM leave_requests
        WHERE radiologist_id = $1
        ORDER BY created_at DESC`,

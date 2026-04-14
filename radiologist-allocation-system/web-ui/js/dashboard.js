@@ -10,6 +10,14 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function badgeClassFromStatus(status) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "ACTIVE") return "is-danger";
+  if (normalized === "UPCOMING") return "is-pending";
+  if (normalized === "COMPLETED") return "is-success";
+  return "is-muted";
+}
+
 function showToast(message, type = "success") {
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
@@ -243,6 +251,18 @@ async function applyLeave() {
   const end_date = document.getElementById("leaveEnd").value;
   const reason = document.getElementById("reason").value;
 
+  if (!start_date || !end_date) {
+    setMessage("leaveMsg", "Please select both start and end date.", true);
+    showToast("Please select both start and end date.", "error");
+    return;
+  }
+
+  if (new Date(start_date) > new Date(end_date)) {
+    setMessage("leaveMsg", "End date must be on or after start date.", true);
+    showToast("End date must be on or after start date.", "error");
+    return;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/leaves`, {
       method: "POST",
@@ -335,7 +355,7 @@ async function fetchLeaves() {
           <strong>${new Date(leave.start_date).toLocaleDateString()} to ${new Date(leave.end_date).toLocaleDateString()}</strong>
           <p>${escapeHtml(leave.reason || "No reason provided")}</p>
         </div>
-        <span class="mini-badge is-pending">${escapeHtml(leave.status || "PENDING")}</span>
+        <span class="mini-badge ${badgeClassFromStatus(leave.display_status || leave.status)}">${escapeHtml(leave.display_status || leave.status || "PENDING")}</span>
       </div>
     `).join("");
   } catch (err) {

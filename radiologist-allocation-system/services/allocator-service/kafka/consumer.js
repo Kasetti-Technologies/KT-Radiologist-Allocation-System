@@ -10,7 +10,10 @@ const kafka = new Kafka({
 });
 
 const consumer = kafka.consumer({ groupId: "allocator-group" });
-const BILLING_WEBHOOK_URL = process.env.BILLING_WEBHOOK_URL || "https://webhook.site/cb632dde-8aae-4d1c-b23c-06bdb3d87e4d";
+const BILLING_WEBHOOK_URLS = [
+  process.env.BILLING_WEBHOOK_URL || "http://172.16.16.25:8004/billing/report-completed",
+  process.env.BILLING_MIRROR_WEBHOOK_URL || "https://webhook.site/c45f61b7-64d1-4c82-80ea-82aab63ef6a1",
+].filter(Boolean);
 
 function safeParse(msg) {
   try {
@@ -24,11 +27,15 @@ function safeParse(msg) {
 async function storePendingAssignment(client, data) {
   await client.query(
     `INSERT INTO assignments (
-       ticket_id, category, priority, sla_minutes, status, bahmni_url, created_at, updated_at
+       ticket_id, hospital_id, study_uid, patient_uuid, encounter_uuid, category, priority, sla_minutes, status, bahmni_url, created_at, updated_at
      )
-     VALUES ($1, $2, $3, $4, 'PENDING', $5, NOW(), NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', $9, NOW(), NOW())
      ON CONFLICT (ticket_id) DO UPDATE
-     SET category = EXCLUDED.category,
+     SET hospital_id = EXCLUDED.hospital_id,
+         study_uid = COALESCE(EXCLUDED.study_uid, assignments.study_uid),
+         patient_uuid = COALESCE(EXCLUDED.patient_uuid, assignments.patient_uuid),
+         encounter_uuid = COALESCE(EXCLUDED.encounter_uuid, assignments.encounter_uuid),
+         category = EXCLUDED.category,
          priority = EXCLUDED.priority,
          sla_minutes = EXCLUDED.sla_minutes,
          bahmni_url = EXCLUDED.bahmni_url,
@@ -36,6 +43,10 @@ async function storePendingAssignment(client, data) {
      WHERE assignments.status = 'PENDING'`,
     [
       data.ticket_id,
+      data.hospital_id || data.tenant_id || null,
+      data.study_uid || null,
+      data.patient_uuid || null,
+      data.encounter_uuid || null,
       data.category,
       data.priority || 2,
       data.sla_minutes || 0,
@@ -48,14 +59,15 @@ async function assignCase(client, assignmentRow, selected) {
   const result = await client.query(
     `UPDATE assignments
      SET radiologist_id = $2,
-         radiologist_name = $3,
+         radiologist_code = $3,
+         radiologist_name = $4,
          status = 'ASSIGNED',
          assigned_at = NOW(),
-         booked_slot_id = $4,
+         booked_slot_id = $5,
          updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
-    [assignmentRow.id, selected.id, selected.name, selected.slot_id]
+    [assignmentRow.id, selected.id, selected.radiologist_code, selected.name, selected.slot_id]
   );
 
   return result.rows[0];
@@ -104,8 +116,11 @@ async function tryAssignCase(data) {
     slaGauge.set({ category: data.category }, data.sla_minutes || 0);
 
     await sendAssignedMessage({
+      ticket_id: assignment.ticket_id,
       case_id: assignment.ticket_id,
+      hospital_id: assignment.hospital_id,
       radiologist_id: selected.id,
+      radiologist_code: selected.radiologist_code,
       radiologist_name: selected.name,
       category: assignment.category,
       assigned_at: new Date().toISOString(),
@@ -122,7 +137,8 @@ async function tryAssignCase(data) {
 
 async function retryPendingAssignments(limit = 20) {
   const pendingRows = await pool.query(
-    `SELECT id, ticket_id, category, priority, sla_minutes, bahmni_url
+    `SELECT id, ticket_id, hospital_id, category, priority, sla_minutes, bahmni_url
+     , study_uid, patient_uuid, encounter_uuid
      FROM assignments
      WHERE status = 'PENDING'
      ORDER BY created_at ASC
@@ -134,6 +150,10 @@ async function retryPendingAssignments(limit = 20) {
     try {
       const result = await tryAssignCase({
         ticket_id: row.ticket_id,
+        hospital_id: row.hospital_id,
+        study_uid: row.study_uid,
+        patient_uuid: row.patient_uuid,
+        encounter_uuid: row.encounter_uuid,
         category: row.category,
         priority: row.priority,
         sla_minutes: row.sla_minutes,
@@ -150,11 +170,9 @@ async function retryPendingAssignments(limit = 20) {
   }
 }
 
-async function postBillingWebhook(payload) {
-  if (!BILLING_WEBHOOK_URL) return;
-
+async function postBillingWebhook(url, payload) {
   try {
-    const response = await fetch(BILLING_WEBHOOK_URL, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -163,12 +181,13 @@ async function postBillingWebhook(payload) {
     });
 
     if (!response.ok) {
-      console.error(`Billing webhook failed with status ${response.status}`);
+      const responseText = await response.text().catch(() => "");
+      console.error(`Billing webhook failed for ${url} with status ${response.status}${responseText ? `: ${responseText}` : ""}`);
     } else {
-      console.log("Billing webhook payload sent successfully");
+      console.log(`Billing webhook payload sent successfully to ${url}`);
     }
   } catch (err) {
-    console.error("Billing webhook error:", err);
+    console.error(`Billing webhook error for ${url}:`, err);
   }
 }
 
@@ -176,6 +195,10 @@ async function sendCompletionBillingPayload(caseId) {
   const result = await pool.query(
     `SELECT
        a.ticket_id,
+       a.hospital_id,
+       a.study_uid,
+       a.patient_uuid,
+       a.encounter_uuid,
        a.category,
        a.priority,
        a.sla_minutes,
@@ -184,6 +207,7 @@ async function sendCompletionBillingPayload(caseId) {
        a.completed_at,
        a.bahmni_url,
        r.id AS radiologist_id,
+       r.radiologist_code,
        r.name AS radiologist_name,
        r.email AS radiologist_email,
        r.specialization AS radiologist_specialization
@@ -198,11 +222,23 @@ async function sendCompletionBillingPayload(caseId) {
   const row = result.rows[0];
   if (!row) return;
 
-  await postBillingWebhook({
+  const payload = {
     event: "radiology.case.completed",
     sent_at: new Date().toISOString(),
+    tenant_id: row.hospital_id,
+    hospital_id: row.hospital_id,
+    study_id: row.ticket_id,
+    study_uid: row.study_uid,
+    patient_uuid: row.patient_uuid,
+    encounter_uuid: row.encounter_uuid,
+    completed_at: row.completed_at,
     case: {
       ticket_id: row.ticket_id,
+      hospital_id: row.hospital_id,
+      study_id: row.ticket_id,
+      study_uid: row.study_uid,
+      patient_uuid: row.patient_uuid,
+      encounter_uuid: row.encounter_uuid,
       category: row.category,
       priority: row.priority,
       sla_minutes: row.sla_minutes,
@@ -212,12 +248,17 @@ async function sendCompletionBillingPayload(caseId) {
       bahmni_url: row.bahmni_url,
     },
     radiologist: {
-      id: row.radiologist_id,
+      id: row.radiologist_code || row.radiologist_id,
+      internal_id: row.radiologist_id,
       name: row.radiologist_name,
       email: row.radiologist_email,
       specialization: row.radiologist_specialization,
     },
-  });
+  };
+
+  for (const url of BILLING_WEBHOOK_URLS) {
+    await postBillingWebhook(url, payload);
+  }
 }
 
 export const startConsumer = async () => {
@@ -276,7 +317,7 @@ export const startConsumer = async () => {
                  completed_at = $1,
                  updated_at = NOW()
              WHERE ticket_id = $2
-             RETURNING ticket_id, booked_slot_id`,
+             RETURNING ticket_id, hospital_id, booked_slot_id`,
             [completed_at || new Date().toISOString(), case_id]
           );
 

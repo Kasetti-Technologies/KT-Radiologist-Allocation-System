@@ -35,6 +35,7 @@ export const allocateRadiologist = async (client, category, skills_required = []
   const query = `
     SELECT
       r.id,
+      r.radiologist_code,
       r.name,
       r.email,
       r.specialization,

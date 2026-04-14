@@ -1,4 +1,3 @@
-// services/radiologist-service/routes/assignments.js
 import express from "express";
 import { pool } from "../db/connect.js";
 import { authMiddleware } from "../utils/auth.js";
@@ -17,19 +16,17 @@ function buildBahmniUrl(row) {
   return `${normalizedBase}/bahmni/clinical/patient/${encodeURIComponent(row.ticket_id)}`;
 }
 
-// GET /api/assignments  -> list assignments for radiologist (from shared DB)
 router.get("/", async (req, res) => {
   console.log("JWT USER:", req.user);
   try {
     const radiologist_id = req.user.id;
-    // Pull assignments from the project's assignments table
-    const q = `SELECT id, ticket_id, radiologist_id, radiologist_name, category, created_at, assigned_at, priority, status, sla_minutes,bahmni_url, assigned_at
+    const q = `SELECT id, ticket_id, hospital_id, radiologist_id, radiologist_code, radiologist_name, category, created_at, assigned_at, priority, status, sla_minutes, bahmni_url
                FROM assignments
                WHERE radiologist_id = $1
-               ORDER BY assigned_at DESC 
+               ORDER BY assigned_at DESC
                LIMIT 200`;
     const r = await pool.query(q, [radiologist_id]);
-    const rows = r.rows.map(row => ({
+    const rows = r.rows.map((row) => ({
       ...row,
       bahmni_url: buildBahmniUrl(row)
     }));
@@ -53,7 +50,7 @@ router.put("/:id/complete", async (req, res) => {
        WHERE id = $1
          AND radiologist_id = $2
          AND status <> 'COMPLETED'
-       RETURNING id, ticket_id, radiologist_id, status, completed_at`,
+       RETURNING id, ticket_id, radiologist_id, radiologist_code, hospital_id, status, completed_at`,
       [assignmentId, radiologistId]
     );
 
@@ -65,7 +62,9 @@ router.put("/:id/complete", async (req, res) => {
 
     await sendCompletionEvent({
       case_id: assignment.ticket_id,
+      hospital_id: assignment.hospital_id,
       radiologist_id: assignment.radiologist_id,
+      radiologist_code: assignment.radiologist_code,
       completed_at: assignment.completed_at,
     });
 
@@ -76,7 +75,6 @@ router.put("/:id/complete", async (req, res) => {
   }
 });
 
-// GET /api/assignments/all   (admin view; optional)
 router.get("/all", async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM assignments ORDER BY created_at DESC LIMIT 500`);
