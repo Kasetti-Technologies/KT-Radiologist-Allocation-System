@@ -31,7 +31,24 @@ export const reassignTicket = async (assignment) => {
       await client.query(
         `UPDATE radiologists
          SET assigned_count = GREATEST(assigned_count - 1, 0),
-             availability = TRUE
+             availability = CASE
+               WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+                AND EXISTS (
+                  SELECT 1
+                  FROM availability_slots slot
+                  WHERE slot.radiologist_id = radiologists.id
+                    AND slot.is_booked = FALSE
+                    AND NOW() BETWEEN slot.start_time AND slot.end_time
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM leave_requests lr
+                  WHERE lr.radiologist_id = radiologists.id
+                    AND CURRENT_DATE BETWEEN lr.start_date AND lr.end_date
+                )
+               THEN TRUE
+               ELSE FALSE
+             END
          WHERE id = $1`,
         [previousRadiologistId]
       );
@@ -89,14 +106,27 @@ export const reassignTicket = async (assignment) => {
     const result = await client.query(
       `UPDATE assignments
        SET radiologist_id = $1,
-           radiologist_name = $2,
-           booked_slot_id = $3,
+           radiologist_code = $2,
+           radiologist_name = $3,
+           booked_slot_id = $4,
            status = 'ASSIGNED',
            escalated = FALSE,
+           previous_radiologist_id = $5,
+           previous_radiologist_code = $6,
+           reassignment_reason = 'sla_breach_reassigned',
+           reassigned_at = NOW(),
            updated_at = NOW()
-       WHERE id = $4
+       WHERE id = $7
        RETURNING *`,
-      [newRadiologist.id, newRadiologist.name, newRadiologist.slot_id, current.id]
+      [
+        newRadiologist.id,
+        newRadiologist.radiologist_code,
+        newRadiologist.name,
+        newRadiologist.slot_id,
+        previousRadiologistId,
+        current.radiologist_code,
+        current.id
+      ]
     );
 
     await client.query("COMMIT");
@@ -108,6 +138,7 @@ export const reassignTicket = async (assignment) => {
       ticket_id: updated.ticket_id,
       case_id: updated.ticket_id,
       radiologist_id: newRadiologist.id,
+      radiologist_code: newRadiologist.radiologist_code,
       radiologist_name: newRadiologist.name,
       category: updated.category,
       provenance: {

@@ -11,9 +11,33 @@ export const runMigration = async () => {
       password_hash TEXT NOT NULL,
       specialization VARCHAR(100),
       availability BOOLEAN DEFAULT true,
+      operational_status VARCHAR(50) DEFAULT 'AVAILABLE',
+      unavailable_since TIMESTAMP,
+      unavailable_until TIMESTAMP,
+      unavailable_reason TEXT,
       assigned_count INT DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS operational_status VARCHAR(50) DEFAULT 'AVAILABLE';
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS unavailable_since TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS unavailable_until TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS unavailable_reason TEXT;
   `);
 
   await pool.query(`

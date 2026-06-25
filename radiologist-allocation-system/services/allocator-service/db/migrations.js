@@ -12,6 +12,10 @@ export const runMigrations = async () => {
       password_hash TEXT NOT NULL,
       specialization VARCHAR(255),
       availability BOOLEAN DEFAULT true,
+      operational_status VARCHAR(50) DEFAULT 'AVAILABLE',
+      unavailable_since TIMESTAMP,
+      unavailable_until TIMESTAMP,
+      unavailable_reason TEXT,
       assigned_count INT DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW()
     );
@@ -31,6 +35,26 @@ export const runMigrations = async () => {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_radiologists_code_unique
     ON radiologists(radiologist_code);
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS operational_status VARCHAR(50) DEFAULT 'AVAILABLE';
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS unavailable_since TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS unavailable_until TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS unavailable_reason TEXT;
   `);
 
   await pool.query(`
@@ -80,6 +104,10 @@ export const runMigrations = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       escalated BOOLEAN DEFAULT FALSE,
       booked_slot_id INT REFERENCES availability_slots(id),
+      reassignment_reason TEXT,
+      previous_radiologist_id INT,
+      previous_radiologist_code VARCHAR(20),
+      reassigned_at TIMESTAMP,
       retry_count INT DEFAULT 0,
       last_retry_at TIMESTAMP
     );
@@ -113,6 +141,26 @@ export const runMigrations = async () => {
   await pool.query(`
     ALTER TABLE assignments
     ADD COLUMN IF NOT EXISTS booked_slot_id INT REFERENCES availability_slots(id);
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS reassignment_reason TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS previous_radiologist_id INT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS previous_radiologist_code VARCHAR(20);
+  `);
+
+  await pool.query(`
+    ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS reassigned_at TIMESTAMP;
   `);
 
   await pool.query(`

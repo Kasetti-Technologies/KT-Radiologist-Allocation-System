@@ -38,10 +38,14 @@ router.post("/", async (req, res) => {
 
     await pool.query(
       `UPDATE radiologists
-       SET availability = FALSE
+       SET availability = FALSE,
+           operational_status = 'ON_LEAVE',
+           unavailable_since = NOW(),
+           unavailable_until = $3::date + 1,
+           unavailable_reason = COALESCE($4, 'Leave active')
        WHERE id = $1
          AND CURRENT_DATE BETWEEN $2::date AND $3::date`,
-      [req.user.id, start_date, end_date]
+      [req.user.id, start_date, end_date, reason || null]
     );
 
     await sendLeaveUpdate({

@@ -11,7 +11,7 @@ const kafka = new Kafka({
 
 const consumer = kafka.consumer({ groupId: "allocator-group" });
 const BILLING_WEBHOOK_URLS = [
-  process.env.BILLING_WEBHOOK_URL || "http://172.16.16.25:8004/billing/report-completed",
+  process.env.BILLING_WEBHOOK_URL || "http://172.16.16.39:8004/billing/report-completed",
   process.env.BILLING_MIRROR_WEBHOOK_URL || "https://webhook.site/c45f61b7-64d1-4c82-80ea-82aab63ef6a1",
 ].filter(Boolean);
 
@@ -170,6 +170,128 @@ async function retryPendingAssignments(limit = 20) {
   }
 }
 
+async function handleRadiologistStatusEvent(data) {
+  const status = String(data.status || "").trim().toUpperCase();
+  const blockingStatuses = new Set(["EMERGENCY_UNAVAILABLE", "OFFLINE", "MANUALLY_BLOCKED", "ON_LEAVE"]);
+  const isBlocking = blockingStatuses.has(status);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    if (isBlocking) {
+      await client.query(
+        `UPDATE radiologists
+         SET availability = FALSE,
+             operational_status = $2,
+             unavailable_since = COALESCE($3::timestamp, NOW()),
+             unavailable_until = $4::timestamp,
+             unavailable_reason = $5
+         WHERE id = $1`,
+        [
+          data.radiologist_id,
+          status,
+          data.unavailable_since || data.changed_at || null,
+          data.unavailable_until || null,
+          data.reason || null
+        ]
+      );
+
+      const activeAssignments = await client.query(
+        `SELECT id, ticket_id, booked_slot_id, radiologist_id, radiologist_code, status
+         FROM assignments
+         WHERE radiologist_id = $1
+           AND status IN ('ASSIGNED', 'IN_REVIEW', 'BREACHED')
+         FOR UPDATE`,
+        [data.radiologist_id]
+      );
+
+      for (const assignment of activeAssignments.rows) {
+        if (assignment.booked_slot_id) {
+          await client.query(
+            `UPDATE availability_slots
+             SET is_booked = FALSE
+             WHERE id = $1`,
+            [assignment.booked_slot_id]
+          );
+        }
+
+        await client.query(
+          `UPDATE assignments
+           SET status = 'PENDING',
+               radiologist_id = NULL,
+               radiologist_code = NULL,
+               radiologist_name = NULL,
+               booked_slot_id = NULL,
+               previous_radiologist_id = $2,
+               previous_radiologist_code = $3,
+               reassignment_reason = $4,
+               reassigned_at = NOW(),
+               retry_count = COALESCE(retry_count, 0) + 1,
+               last_retry_at = NOW(),
+               updated_at = NOW()
+           WHERE id = $1`,
+          [
+            assignment.id,
+            assignment.radiologist_id,
+            assignment.radiologist_code,
+            `radiologist_${status.toLowerCase()}`
+          ]
+        );
+      }
+
+      if (activeAssignments.rows.length) {
+        await client.query(
+          `UPDATE radiologists
+           SET assigned_count = GREATEST(assigned_count - $2, 0)
+           WHERE id = $1`,
+          [data.radiologist_id, activeAssignments.rows.length]
+        );
+      }
+    } else if (status === "AVAILABLE") {
+      await client.query(
+        `UPDATE radiologists r
+         SET operational_status = 'AVAILABLE',
+             unavailable_since = NULL,
+             unavailable_until = NULL,
+             unavailable_reason = NULL,
+             availability = EXISTS (
+               SELECT 1
+               FROM availability_slots slot
+               WHERE slot.radiologist_id = r.id
+                 AND slot.is_booked = FALSE
+                 AND NOW() BETWEEN slot.start_time AND slot.end_time
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM leave_requests lr
+               WHERE lr.radiologist_id = r.id
+                 AND CURRENT_DATE BETWEEN lr.start_date AND lr.end_date
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM assignments a
+               WHERE a.radiologist_id = r.id
+                 AND a.status IN ('ASSIGNED', 'IN_REVIEW')
+             )
+         WHERE r.id = $1`,
+        [data.radiologist_id]
+      );
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  if (isBlocking || status === "AVAILABLE") {
+    await retryPendingAssignments();
+  }
+}
+
 async function postBillingWebhook(url, payload) {
   try {
     const response = await fetch(url, {
@@ -268,6 +390,7 @@ export const startConsumer = async () => {
   await consumer.subscribe({ topic: "radiology.validated", fromBeginning: false });
   await consumer.subscribe({ topic: "radiologist.availability", fromBeginning: false });
   await consumer.subscribe({ topic: "radiologist.leave", fromBeginning: false });
+  await consumer.subscribe({ topic: "radiologist.status", fromBeginning: false });
   await consumer.subscribe({ topic: "radiology.completed", fromBeginning: false });
 
   await consumer.run({
@@ -281,7 +404,18 @@ export const startConsumer = async () => {
         if (topic === "radiologist.availability") {
           await pool.query(
             `UPDATE radiologists
-             SET availability = TRUE
+             SET availability = CASE
+               WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+                AND EXISTS (
+                  SELECT 1
+                  FROM availability_slots slot
+                  WHERE slot.radiologist_id = radiologists.id
+                    AND slot.is_booked = FALSE
+                    AND NOW() BETWEEN slot.start_time AND slot.end_time
+                )
+               THEN TRUE
+               ELSE FALSE
+             END
              WHERE id = $1`,
             [data.radiologist_id]
           );
@@ -290,10 +424,24 @@ export const startConsumer = async () => {
         }
 
         if (topic === "radiologist.leave") {
-          await pool.query(
-            "UPDATE radiologists SET availability = false WHERE id = $1",
-            [data.radiologist_id]
+          const leaveIsActive = await pool.query(
+            `SELECT CURRENT_DATE BETWEEN $1::date AND $2::date AS active_now`,
+            [data.start_date, data.end_date]
           );
+
+          if (leaveIsActive.rows[0]?.active_now) {
+            await handleRadiologistStatusEvent({
+              radiologist_id: data.radiologist_id,
+              status: "ON_LEAVE",
+              reason: data.reason || "Leave active",
+              changed_at: new Date().toISOString(),
+            });
+          }
+          return;
+        }
+
+        if (topic === "radiologist.status") {
+          await handleRadiologistStatusEvent(data);
           return;
         }
 
@@ -324,14 +472,6 @@ export const startConsumer = async () => {
           if (completion.rows.length) {
             const bookedSlotId = completion.rows[0].booked_slot_id;
 
-            await pool.query(
-              `UPDATE radiologists
-               SET assigned_count = GREATEST(assigned_count - 1, 0),
-                   availability = TRUE
-               WHERE id = $1`,
-              [radiologist_id]
-            );
-
             if (bookedSlotId) {
               await pool.query(
                 `UPDATE availability_slots
@@ -340,6 +480,38 @@ export const startConsumer = async () => {
                 [bookedSlotId]
               );
             }
+
+            await pool.query(
+              `UPDATE radiologists
+               SET assigned_count = GREATEST(assigned_count - 1, 0),
+                   availability = CASE
+                     WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM availability_slots slot
+                        WHERE slot.radiologist_id = radiologists.id
+                          AND slot.is_booked = FALSE
+                          AND NOW() BETWEEN slot.start_time AND slot.end_time
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM leave_requests lr
+                        WHERE lr.radiologist_id = radiologists.id
+                          AND CURRENT_DATE BETWEEN lr.start_date AND lr.end_date
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM assignments a
+                        WHERE a.radiologist_id = radiologists.id
+                          AND a.status IN ('ASSIGNED', 'IN_REVIEW')
+                          AND a.ticket_id <> $2
+                      )
+                     THEN TRUE
+                     ELSE FALSE
+                   END
+               WHERE id = $1`,
+              [radiologist_id, case_id]
+            );
 
             await sendCompletionBillingPayload(case_id);
           }

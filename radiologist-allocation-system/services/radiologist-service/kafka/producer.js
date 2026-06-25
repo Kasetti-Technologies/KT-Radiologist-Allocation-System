@@ -35,6 +35,11 @@ export const sendLeaveUpdate = async (message) => {
   console.log("Sent leave update:", message);
 };
 
+export const sendStatusUpdate = async (message) => {
+  await publish(process.env.KAFKA_TOPIC_STATUS || "radiologist.status", message);
+  console.log("Sent status update:", message);
+};
+
 export const sendCompletionEvent = async (message) => {
   await publish("radiology.completed", message);
   console.log("Sent case completion event:", message);

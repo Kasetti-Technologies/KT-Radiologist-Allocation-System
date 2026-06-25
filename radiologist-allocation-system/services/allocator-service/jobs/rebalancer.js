@@ -7,6 +7,7 @@ async function rebalanceAvailability() {
     await pool.query(`
       UPDATE radiologists r
       SET availability = CASE
+        WHEN COALESCE(r.operational_status, 'AVAILABLE') <> 'AVAILABLE' THEN FALSE
         WHEN EXISTS (
           SELECT 1
           FROM leave_requests lr
@@ -30,7 +31,7 @@ async function rebalanceAvailability() {
       END
     `);
 
-    console.log("Rebalancer synced availability with active slots, leave, and case status.");
+    console.log("Rebalancer synced availability with operational status, active slots, leave, and case status.");
   } catch (err) {
     console.error("Rebalancer error:", err);
   }

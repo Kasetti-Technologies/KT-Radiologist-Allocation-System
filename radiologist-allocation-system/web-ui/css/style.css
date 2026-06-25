@@ -398,7 +398,8 @@ input:focus {
 .refresh-btn,
 .logout-btn,
 .complete-btn,
-.open-btn {
+.open-btn,
+.danger-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -431,6 +432,44 @@ input:focus {
 .refresh-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(2, 132, 199, 0.26);
+}
+
+.danger-btn {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: white;
+}
+
+.danger-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(185, 28, 28, 0.24);
+}
+
+.status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(240, 253, 250, 0.94), rgba(239, 246, 255, 0.9));
+  border: 1px solid rgba(14, 116, 144, 0.18);
+}
+
+.status-panel h3 {
+  margin: 6px 0;
+}
+
+.status-panel p {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.status-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .open-btn {
@@ -759,6 +798,11 @@ input:focus {
     align-items: flex-start;
   }
 
+  .status-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .auth-shell {
     grid-template-columns: 1fr;
   }
@@ -787,7 +831,8 @@ input:focus {
   .refresh-btn,
   .logout-btn,
   .complete-btn,
-  .open-btn {
+  .open-btn,
+  .danger-btn {
     width: 100%;
     min-width: 0;
   }

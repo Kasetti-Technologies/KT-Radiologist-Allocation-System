@@ -47,10 +47,27 @@
         <span class="stat-label">Specialization</span>
         <strong id="specializationText">Not set</strong>
       </div>
+      <div class="stat-card">
+        <span class="stat-label">Operational status</span>
+        <strong id="operationalStatusText">Loading</strong>
+      </div>
     </div>
 
     <div id="availability" class="tab-content active">
       <div class="content-card">
+        <div class="status-panel">
+          <div>
+            <span class="panel-note">Current routing state</span>
+            <h3 id="statusPanelTitle">Checking status</h3>
+            <p id="statusPanelCopy">The allocator uses this state together with active time slots.</p>
+          </div>
+          <div class="status-actions">
+            <input id="emergencyReason" type="text" placeholder="Reason, e.g. emergency case or sudden leave" />
+            <button class="danger-btn" type="button" onclick="markEmergencyUnavailable()">Mark Emergency Unavailable</button>
+            <button class="secondary-btn" type="button" onclick="resumeAvailability()">Resume Availability</button>
+          </div>
+        </div>
+
         <div class="section-copy">
           <h3>Declare availability</h3>
           <p>Share your working window so the allocator can route incoming cases correctly.</p>

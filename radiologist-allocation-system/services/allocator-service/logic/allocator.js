@@ -50,6 +50,7 @@ export const allocateRadiologist = async (client, category, skills_required = []
      AND slot.is_booked = FALSE
      AND NOW() BETWEEN slot.start_time AND slot.end_time
     WHERE r.availability = TRUE
+      AND COALESCE(r.operational_status, 'AVAILABLE') = 'AVAILABLE'
       AND NOT EXISTS (
         SELECT 1
         FROM leave_requests lr

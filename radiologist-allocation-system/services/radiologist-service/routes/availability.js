@@ -34,6 +34,19 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Overlapping availability slot already exists" });
     }
 
+    const leaveConflict = await pool.query(
+      `SELECT 1
+       FROM leave_requests
+       WHERE radiologist_id = $1
+         AND daterange(start_date, end_date + 1, '[)') && daterange($2::timestamp::date, $3::timestamp::date + 1, '[)')
+       LIMIT 1`,
+      [radiologist_id, start_time, end_time]
+    );
+
+    if (leaveConflict.rows.length) {
+      return res.status(400).json({ ok: false, error: "Availability cannot overlap an approved leave window" });
+    }
+
     const result = await pool.query(
       `INSERT INTO availability_slots (radiologist_id, start_time, end_time, is_booked)
        VALUES ($1, $2, $3, FALSE)
@@ -43,7 +56,18 @@ router.post("/", async (req, res) => {
 
     await pool.query(
       `UPDATE radiologists
-       SET availability = TRUE
+       SET availability = CASE
+         WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+          AND EXISTS (
+            SELECT 1
+            FROM availability_slots slot
+            WHERE slot.radiologist_id = radiologists.id
+              AND slot.is_booked = FALSE
+              AND NOW() BETWEEN slot.start_time AND slot.end_time
+          )
+         THEN TRUE
+         ELSE FALSE
+       END
        WHERE id = $1`,
       [radiologist_id]
     );

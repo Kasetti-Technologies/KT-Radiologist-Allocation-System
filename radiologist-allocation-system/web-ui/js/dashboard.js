@@ -12,6 +12,9 @@ function escapeHtml(value) {
 
 function badgeClassFromStatus(status) {
   const normalized = String(status || "").toUpperCase();
+  if (normalized === "AVAILABLE") return "is-success";
+  if (normalized === "EMERGENCY_UNAVAILABLE" || normalized === "OFFLINE" || normalized === "MANUALLY_BLOCKED") return "is-danger";
+  if (normalized === "ON_LEAVE") return "is-pending";
   if (normalized === "ACTIVE") return "is-danger";
   if (normalized === "UPCOMING") return "is-pending";
   if (normalized === "COMPLETED") return "is-success";
@@ -82,6 +85,7 @@ window.onload = () => {
   fetchAvailability();
   fetchLeaves();
   fetchAssignments();
+  fetchOperationalStatus();
 };
 
 function switchTab(tabId, element) {
@@ -97,11 +101,91 @@ function switchTab(tabId, element) {
 
   if (tabId === "availability") {
     fetchAvailability();
+    fetchOperationalStatus();
   }
 
   if (tabId === "leave") {
     fetchLeaves();
   }
+}
+
+function formatStatusLabel(status) {
+  return String(status || "AVAILABLE").replace(/_/g, " ");
+}
+
+function renderOperationalStatus(statusData) {
+  const status = statusData?.operational_status || "AVAILABLE";
+  const statusLabel = formatStatusLabel(status);
+  const statusText = document.getElementById("operationalStatusText");
+  const panelTitle = document.getElementById("statusPanelTitle");
+  const panelCopy = document.getElementById("statusPanelCopy");
+
+  if (statusText) {
+    statusText.textContent = statusLabel;
+  }
+
+  if (panelTitle) {
+    panelTitle.textContent = statusLabel;
+  }
+
+  if (panelCopy) {
+    const reason = statusData?.unavailable_reason ? ` Reason: ${statusData.unavailable_reason}` : "";
+    panelCopy.textContent = status === "AVAILABLE"
+      ? "You are eligible for new assignments when a current time slot is open."
+      : `New assignments are paused and active cases will be routed according to SLA rules.${reason}`;
+  }
+}
+
+async function fetchOperationalStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/status`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      renderOperationalStatus(data.data);
+    }
+  } catch (err) {
+    console.error("Status fetch error:", err);
+  }
+}
+
+async function updateOperationalStatus(status, reason = "") {
+  try {
+    const res = await fetch(`${API_BASE}/status`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status, reason }),
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      renderOperationalStatus(data.data);
+      fetchAssignments();
+      fetchAvailability();
+      showToast(status === "AVAILABLE" ? "Availability resumed." : "Emergency unavailable status applied.", "success");
+    } else {
+      showToast(data.error || "Unable to update status.", "error");
+    }
+  } catch (err) {
+    console.error("Status update error:", err);
+    showToast("Unable to update status right now.", "error");
+  }
+}
+
+function markEmergencyUnavailable() {
+  const reason = document.getElementById("emergencyReason")?.value || "Emergency unavailable";
+  updateOperationalStatus("EMERGENCY_UNAVAILABLE", reason);
+}
+
+function resumeAvailability() {
+  updateOperationalStatus("AVAILABLE");
 }
 
 function openBahmni(url) {
