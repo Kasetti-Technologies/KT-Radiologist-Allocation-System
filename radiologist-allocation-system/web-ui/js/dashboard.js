@@ -79,8 +79,12 @@ window.onload = () => {
 
   const name = localStorage.getItem("name") || "Doctor";
   const specialization = localStorage.getItem("specialization") || "Not set";
+  const verificationStatus = localStorage.getItem("verification_status") || "PENDING";
+  const experienceYears = localStorage.getItem("experience_years") || "0";
   document.getElementById("doctorName").textContent = `Welcome, Dr. ${name}`;
   document.getElementById("specializationText").textContent = specialization;
+  document.getElementById("verificationStatusText").textContent = formatStatusLabel(verificationStatus);
+  document.getElementById("experienceYearsText").textContent = `${experienceYears} years`;
 
   fetchAvailability();
   fetchLeaves();
@@ -122,6 +126,17 @@ function renderOperationalStatus(statusData) {
 
   if (statusText) {
     statusText.textContent = statusLabel;
+  }
+
+  const verificationStatus = statusData?.verification_status || localStorage.getItem("verification_status") || "PENDING";
+  const verificationText = document.getElementById("verificationStatusText");
+  if (verificationText) {
+    verificationText.textContent = formatStatusLabel(verificationStatus);
+  }
+
+  const experienceText = document.getElementById("experienceYearsText");
+  if (experienceText) {
+    experienceText.textContent = `${statusData?.experience_years ?? localStorage.getItem("experience_years") ?? 0} years`;
   }
 
   if (panelTitle) {

@@ -20,7 +20,8 @@ router.get("/", async (req, res) => {
   console.log("JWT USER:", req.user);
   try {
     const radiologist_id = req.user.id;
-    const q = `SELECT id, ticket_id, hospital_id, radiologist_id, radiologist_code, radiologist_name, category, created_at, assigned_at, priority, status, sla_minutes, bahmni_url
+    const q = `SELECT id, ticket_id, hospital_id, radiologist_id, radiologist_code, radiologist_name, category, created_at, assigned_at, priority, status, sla_minutes, bahmni_url,
+                      previous_radiologist_id, previous_radiologist_code, reassignment_reason, reassigned_at
                FROM assignments
                WHERE radiologist_id = $1
                ORDER BY assigned_at DESC

@@ -6,6 +6,7 @@ import { startConsumer } from "./kafka/consumer.js";
 import { connectProducer, producer } from "./kafka/producer.js";
 import healthRouter from "./routes/health.js";
 import publishRouter from "./routes/publish.js";
+import opsRouter from "./routes/ops.js";
 import client from "prom-client";
 import { startRebalancer } from "./jobs/rebalancer.js";
 import { startSlaMonitor } from "./slaMonitor.js";
@@ -13,10 +14,18 @@ import { startSlaMonitor } from "./slaMonitor.js";
 dotenv.config();
 const app = express();
 app.use(express.json());
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type, x-ops-key");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 
 // Mount routes first
 app.use("/api/health", healthRouter);
 app.use("/api/publish", publishRouter);
+app.use("/api/ops", opsRouter);
 
 // --- Prometheus metrics setup ---
 const register = new client.Registry();

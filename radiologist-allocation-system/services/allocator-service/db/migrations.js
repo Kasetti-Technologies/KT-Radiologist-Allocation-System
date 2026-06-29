@@ -11,6 +11,13 @@ export const runMigrations = async () => {
       email VARCHAR(255) UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       specialization VARCHAR(255),
+      experience_years INT DEFAULT 0,
+      certification_number VARCHAR(100),
+      certification_authority VARCHAR(150),
+      certification_verified BOOLEAN DEFAULT FALSE,
+      certification_verified_at TIMESTAMP,
+      certification_verified_by VARCHAR(150),
+      verification_status VARCHAR(50) DEFAULT 'PENDING',
       availability BOOLEAN DEFAULT true,
       operational_status VARCHAR(50) DEFAULT 'AVAILABLE',
       unavailable_since TIMESTAMP,
@@ -35,6 +42,53 @@ export const runMigrations = async () => {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_radiologists_code_unique
     ON radiologists(radiologist_code);
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS experience_years INT DEFAULT 0;
+  `);
+
+  await pool.query(`
+    UPDATE radiologists
+    SET experience_years = 0
+    WHERE experience_years IS NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS certification_number VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS certification_authority VARCHAR(150);
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS certification_verified BOOLEAN DEFAULT FALSE;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS certification_verified_at TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS certification_verified_by VARCHAR(150);
+  `);
+
+  await pool.query(`
+    ALTER TABLE radiologists
+    ADD COLUMN IF NOT EXISTS verification_status VARCHAR(50) DEFAULT 'PENDING';
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_radiologists_certification_unique
+    ON radiologists(certification_number)
+    WHERE certification_number IS NOT NULL;
   `);
 
   await pool.query(`
@@ -186,6 +240,29 @@ export const runMigrations = async () => {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_assignments_radiologist_status
     ON assignments(radiologist_id, status);
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS billing_webhook_failures (
+      id SERIAL PRIMARY KEY,
+      url TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      status VARCHAR(50) DEFAULT 'FAILED',
+      http_status INT,
+      response_body TEXT,
+      error_message TEXT,
+      attempts INT DEFAULT 1,
+      next_retry_at TIMESTAMP DEFAULT NOW(),
+      last_attempt_at TIMESTAMP DEFAULT NOW(),
+      delivered_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_billing_webhook_failures_retry
+    ON billing_webhook_failures(status, next_retry_at);
   `);
 
   console.log("Allocator Service DB migrations completed");

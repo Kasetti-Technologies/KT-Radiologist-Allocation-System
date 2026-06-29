@@ -1,4 +1,9 @@
 {
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:e2e",
+    "test:e2e": "node --test tests/e2e"
+  },
   "dependencies": {
     "ajv-formats": "^3.0.1"
   },

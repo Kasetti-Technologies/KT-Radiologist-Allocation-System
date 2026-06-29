@@ -58,6 +58,8 @@ router.post("/", async (req, res) => {
       `UPDATE radiologists
        SET availability = CASE
          WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+          AND COALESCE(certification_verified, FALSE) = TRUE
+          AND COALESCE(verification_status, 'PENDING') = 'VERIFIED'
           AND EXISTS (
             SELECT 1
             FROM availability_slots slot

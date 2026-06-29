@@ -8,6 +8,8 @@ async function rebalanceAvailability() {
       UPDATE radiologists r
       SET availability = CASE
         WHEN COALESCE(r.operational_status, 'AVAILABLE') <> 'AVAILABLE' THEN FALSE
+        WHEN COALESCE(r.certification_verified, FALSE) = FALSE THEN FALSE
+        WHEN COALESCE(r.verification_status, 'PENDING') <> 'VERIFIED' THEN FALSE
         WHEN EXISTS (
           SELECT 1
           FROM leave_requests lr

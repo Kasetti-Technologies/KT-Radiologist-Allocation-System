@@ -27,12 +27,23 @@ export const reassignTicket = async (assignment) => {
     const previousRadiologistId = current.radiologist_id;
     const previousBookedSlotId = current.booked_slot_id;
 
+    if (previousBookedSlotId) {
+      await client.query(
+        `UPDATE availability_slots
+         SET is_booked = FALSE
+         WHERE id = $1`,
+        [previousBookedSlotId]
+      );
+    }
+
     if (previousRadiologistId) {
       await client.query(
         `UPDATE radiologists
          SET assigned_count = GREATEST(assigned_count - 1, 0),
              availability = CASE
                WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+                AND COALESCE(certification_verified, FALSE) = TRUE
+                AND COALESCE(verification_status, 'PENDING') = 'VERIFIED'
                 AND EXISTS (
                   SELECT 1
                   FROM availability_slots slot
@@ -51,15 +62,6 @@ export const reassignTicket = async (assignment) => {
              END
          WHERE id = $1`,
         [previousRadiologistId]
-      );
-    }
-
-    if (previousBookedSlotId) {
-      await client.query(
-        `UPDATE availability_slots
-         SET is_booked = FALSE
-         WHERE id = $1`,
-        [previousBookedSlotId]
       );
     }
 

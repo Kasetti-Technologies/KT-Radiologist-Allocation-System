@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operations Console</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="overlay"></div>
+  <div class="bg-orb bg-orb-one"></div>
+  <div class="bg-orb bg-orb-two"></div>
+
+  <div class="container">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Operations</p>
+        <h2>Allocation Control</h2>
+        <p class="welcome">Track pending cases, escalations, and failed billing callbacks.</p>
+      </div>
+      <div class="hero-card">
+        <span class="hero-label">Ops key</span>
+        <input id="opsKey" type="password" placeholder="Enter operations key" />
+        <input id="adminKey" class="ops-key-secondary" type="password" placeholder="Enter verification key" />
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">Pending</span>
+        <strong id="pendingCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Breached</span>
+        <strong id="breachedCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Escalated</span>
+        <strong id="escalatedCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Webhook failures</span>
+        <strong id="webhookFailureCount">0</strong>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="cases-header">
+        <div>
+          <h3>Pending and Escalated Cases</h3>
+          <p class="section-note">These studies need capacity, reassignment, or manual operations review.</p>
+        </div>
+        <button class="refresh-btn" type="button" onclick="refreshOps()">Refresh</button>
+      </div>
+
+      <div class="table-shell">
+        <table class="modern-table">
+          <thead>
+            <tr>
+              <th>Ticket</th>
+              <th>Tenant</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Retries</th>
+              <th>Reason</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody id="opsCasesTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="content-card ops-section">
+      <div class="cases-header">
+        <div>
+          <h3>Radiologist Certification</h3>
+          <p class="section-note">Verify certification before allowing assignment routing.</p>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="modern-table">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Specialization</th>
+              <th>Experience</th>
+              <th>Certification</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="radiologistTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="content-card ops-section">
+      <div class="cases-header">
+        <div>
+          <h3>Billing Webhook Failures</h3>
+          <p class="section-note">Failed completion callbacks are saved here and retried automatically.</p>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="modern-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Status</th>
+              <th>HTTP</th>
+              <th>Attempts</th>
+              <th>Last Attempt</th>
+              <th>Response</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="webhookTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/ops.js"></script>
+</body>
+</html>

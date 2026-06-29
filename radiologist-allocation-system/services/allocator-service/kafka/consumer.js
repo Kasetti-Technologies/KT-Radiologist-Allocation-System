@@ -14,6 +14,7 @@ const BILLING_WEBHOOK_URLS = [
   process.env.BILLING_WEBHOOK_URL || "http://172.16.16.39:8004/billing/report-completed",
   process.env.BILLING_MIRROR_WEBHOOK_URL || "https://webhook.site/c45f61b7-64d1-4c82-80ea-82aab63ef6a1",
 ].filter(Boolean);
+const BILLING_WEBHOOK_MAX_ATTEMPTS = Number(process.env.BILLING_WEBHOOK_MAX_ATTEMPTS || 5);
 
 function safeParse(msg) {
   try {
@@ -62,6 +63,7 @@ async function assignCase(client, assignmentRow, selected) {
          radiologist_code = $3,
          radiologist_name = $4,
          status = 'ASSIGNED',
+         escalated = FALSE,
          assigned_at = NOW(),
          booked_slot_id = $5,
          updated_at = NOW()
@@ -123,6 +125,13 @@ async function tryAssignCase(data) {
       radiologist_code: selected.radiologist_code,
       radiologist_name: selected.name,
       category: assignment.category,
+      provenance: assignment.reassignment_reason
+        ? {
+            reason: assignment.reassignment_reason,
+            previous_radiologist_id: assignment.previous_radiologist_id,
+            previous_radiologist_code: assignment.previous_radiologist_code,
+          }
+        : undefined,
       assigned_at: new Date().toISOString(),
     });
 
@@ -162,7 +171,10 @@ async function retryPendingAssignments(limit = 20) {
       });
 
       if (result?.assigned) {
-        console.log(`Pending case ${row.ticket_id} assigned to ${result.selected.name}`);
+        const handoffReason = result.assignment.reassignment_reason
+          ? ` after ${result.assignment.reassignment_reason}`
+          : "";
+        console.log(`Pending case ${row.ticket_id} assigned to ${result.selected.name}${handoffReason}`);
       }
     } catch (err) {
       console.error(`Retry failed for pending case ${row.ticket_id}:`, err);
@@ -206,6 +218,12 @@ async function handleRadiologistStatusEvent(data) {
         [data.radiologist_id]
       );
 
+      if (activeAssignments.rows.length) {
+        console.warn(
+          `Radiologist ${data.radiologist_id} is ${status}; releasing ${activeAssignments.rows.length} active case(s) for reassignment.`
+        );
+      }
+
       for (const assignment of activeAssignments.rows) {
         if (assignment.booked_slot_id) {
           await client.query(
@@ -219,6 +237,7 @@ async function handleRadiologistStatusEvent(data) {
         await client.query(
           `UPDATE assignments
            SET status = 'PENDING',
+               escalated = TRUE,
                radiologist_id = NULL,
                radiologist_code = NULL,
                radiologist_name = NULL,
@@ -262,6 +281,8 @@ async function handleRadiologistStatusEvent(data) {
                  AND slot.is_booked = FALSE
                  AND NOW() BETWEEN slot.start_time AND slot.end_time
              )
+             AND COALESCE(r.certification_verified, FALSE) = TRUE
+             AND COALESCE(r.verification_status, 'PENDING') = 'VERIFIED'
              AND NOT EXISTS (
                SELECT 1
                FROM leave_requests lr
@@ -305,12 +326,90 @@ async function postBillingWebhook(url, payload) {
     if (!response.ok) {
       const responseText = await response.text().catch(() => "");
       console.error(`Billing webhook failed for ${url} with status ${response.status}${responseText ? `: ${responseText}` : ""}`);
+      await recordBillingWebhookFailure(url, payload, response.status, responseText, null);
     } else {
       console.log(`Billing webhook payload sent successfully to ${url}`);
     }
   } catch (err) {
     console.error(`Billing webhook error for ${url}:`, err);
+    await recordBillingWebhookFailure(url, payload, null, null, err.message);
   }
+}
+
+async function recordBillingWebhookFailure(url, payload, httpStatus, responseBody, errorMessage) {
+  await pool.query(
+    `INSERT INTO billing_webhook_failures (
+       url, payload, status, http_status, response_body, error_message, attempts, next_retry_at, last_attempt_at
+     )
+     VALUES ($1, $2::jsonb, 'FAILED', $3, $4, $5, 1, NOW() + INTERVAL '5 minutes', NOW())`,
+    [url, JSON.stringify(payload), httpStatus, responseBody, errorMessage]
+  );
+}
+
+async function retryFailedBillingWebhooks(limit = 20) {
+  const result = await pool.query(
+    `SELECT *
+     FROM billing_webhook_failures
+     WHERE status = 'FAILED'
+       AND attempts < $1
+       AND next_retry_at <= NOW()
+     ORDER BY created_at ASC
+     LIMIT $2`,
+    [BILLING_WEBHOOK_MAX_ATTEMPTS, limit]
+  );
+
+  for (const row of result.rows) {
+    try {
+      const response = await fetch(row.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(row.payload),
+      });
+
+      const responseText = await response.text().catch(() => "");
+      const status = response.ok ? "DELIVERED" : "FAILED";
+      await pool.query(
+        `UPDATE billing_webhook_failures
+         SET status = $2,
+             http_status = $3,
+             response_body = $4,
+             error_message = NULL,
+             attempts = attempts + 1,
+             last_attempt_at = NOW(),
+             next_retry_at = CASE
+               WHEN $2 = 'DELIVERED' THEN NULL
+               WHEN attempts + 1 >= $5 THEN NULL
+               ELSE NOW() + ((attempts + 1) * INTERVAL '5 minutes')
+             END,
+             delivered_at = CASE WHEN $2 = 'DELIVERED' THEN NOW() ELSE delivered_at END,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [row.id, status, response.status, responseText, BILLING_WEBHOOK_MAX_ATTEMPTS]
+      );
+    } catch (err) {
+      await pool.query(
+        `UPDATE billing_webhook_failures
+         SET error_message = $2,
+             attempts = attempts + 1,
+             last_attempt_at = NOW(),
+             next_retry_at = CASE
+               WHEN attempts + 1 >= $3 THEN NULL
+               ELSE NOW() + ((attempts + 1) * INTERVAL '5 minutes')
+             END,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [row.id, err.message, BILLING_WEBHOOK_MAX_ATTEMPTS]
+      );
+    }
+  }
+}
+
+function startBillingWebhookRetryLoop() {
+  setInterval(() => {
+    retryFailedBillingWebhooks().catch((err) => {
+      console.error("Billing webhook retry loop error:", err);
+    });
+  }, 60 * 1000);
 }
 
 async function sendCompletionBillingPayload(caseId) {
@@ -386,6 +485,7 @@ async function sendCompletionBillingPayload(caseId) {
 export const startConsumer = async () => {
   await consumer.connect();
   console.log("Allocator Consumer connected");
+  startBillingWebhookRetryLoop();
 
   await consumer.subscribe({ topic: "radiology.validated", fromBeginning: false });
   await consumer.subscribe({ topic: "radiologist.availability", fromBeginning: false });
@@ -406,6 +506,8 @@ export const startConsumer = async () => {
             `UPDATE radiologists
              SET availability = CASE
                WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+                AND COALESCE(certification_verified, FALSE) = TRUE
+                AND COALESCE(verification_status, 'PENDING') = 'VERIFIED'
                 AND EXISTS (
                   SELECT 1
                   FROM availability_slots slot
@@ -486,6 +588,8 @@ export const startConsumer = async () => {
                SET assigned_count = GREATEST(assigned_count - 1, 0),
                    availability = CASE
                      WHEN COALESCE(operational_status, 'AVAILABLE') = 'AVAILABLE'
+                      AND COALESCE(certification_verified, FALSE) = TRUE
+                      AND COALESCE(verification_status, 'PENDING') = 'VERIFIED'
                       AND EXISTS (
                         SELECT 1
                         FROM availability_slots slot

@@ -15,7 +15,8 @@ function normalizeStatus(status) {
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, radiologist_code, name, availability, operational_status, unavailable_since, unavailable_until, unavailable_reason
+      `SELECT id, radiologist_code, name, experience_years, availability, operational_status, unavailable_since, unavailable_until, unavailable_reason,
+              certification_number, certification_authority, certification_verified, verification_status
        FROM radiologists
        WHERE id = $1`,
       [req.user.id]
@@ -61,10 +62,13 @@ router.put("/", async (req, res) => {
     const isBlocking = BLOCKING_STATUSES.has(status);
     const result = await pool.query(
       `UPDATE radiologists
-       SET operational_status = $2,
+       SET operational_status = $2::text,
            availability = CASE
-             WHEN $3 THEN FALSE
-             WHEN $2 = 'AVAILABLE' THEN EXISTS (
+             WHEN $3::boolean THEN FALSE
+             WHEN $2::text = 'AVAILABLE'
+              AND COALESCE(certification_verified, FALSE) = TRUE
+              AND COALESCE(verification_status, 'PENDING') = 'VERIFIED'
+             THEN EXISTS (
                SELECT 1
                FROM availability_slots slot
                WHERE slot.radiologist_id = radiologists.id
@@ -73,11 +77,12 @@ router.put("/", async (req, res) => {
              )
              ELSE availability
            END,
-           unavailable_since = CASE WHEN $3 THEN NOW() ELSE NULL END,
-           unavailable_until = CASE WHEN $3 THEN $4::timestamp ELSE NULL END,
-           unavailable_reason = CASE WHEN $3 THEN $5 ELSE NULL END
+           unavailable_since = CASE WHEN $3::boolean THEN NOW() ELSE NULL END,
+           unavailable_until = CASE WHEN $3::boolean THEN $4::timestamp ELSE NULL END,
+           unavailable_reason = CASE WHEN $3::boolean THEN $5::text ELSE NULL END
        WHERE id = $1
-       RETURNING id, radiologist_code, name, availability, operational_status, unavailable_since, unavailable_until, unavailable_reason`,
+       RETURNING id, radiologist_code, name, experience_years, availability, operational_status, unavailable_since, unavailable_until, unavailable_reason,
+                 certification_number, certification_authority, certification_verified, verification_status`,
       [radiologistId, status, isBlocking, unavailableUntil, reason]
     );
 

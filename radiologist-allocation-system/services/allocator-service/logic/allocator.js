@@ -39,6 +39,7 @@ export const allocateRadiologist = async (client, category, skills_required = []
       r.name,
       r.email,
       r.specialization,
+      r.experience_years,
       r.assigned_count,
       r.availability,
       slot.id AS slot_id,
@@ -51,6 +52,8 @@ export const allocateRadiologist = async (client, category, skills_required = []
      AND NOW() BETWEEN slot.start_time AND slot.end_time
     WHERE r.availability = TRUE
       AND COALESCE(r.operational_status, 'AVAILABLE') = 'AVAILABLE'
+      AND COALESCE(r.certification_verified, FALSE) = TRUE
+      AND COALESCE(r.verification_status, 'PENDING') = 'VERIFIED'
       AND NOT EXISTS (
         SELECT 1
         FROM leave_requests lr
@@ -65,7 +68,7 @@ export const allocateRadiologist = async (client, category, skills_required = []
       )
       AND (${specializationChecks.join(" OR ")})
       ${excludeClause}
-    ORDER BY r.assigned_count ASC, slot.start_time ASC, r.id ASC
+    ORDER BY COALESCE(r.experience_years, 0) DESC, r.assigned_count ASC, slot.end_time ASC, r.id ASC
     LIMIT 1
     FOR UPDATE OF r, slot SKIP LOCKED;
   `;
